@@ -39,6 +39,53 @@
   - (Optionally) Gradio controls in `soundgen.web`
 - Local/generated folders are intentionally gitignored: `outputs/`, `resourcepack/`, `pre_gen_sound/`, `tools/rfxgen/`, `library/`, `*.egg-info/`.
 
+## Workflow after every change (recommended)
+Use the same discipline as “mod workspace” repos: scan broadly, fix systematically, and validate via a minimal smoke run.
+
+1. **Scan first**
+   - Check VS Code Problems across the workspace.
+   - If you touched CLI flags, update `README.md` usage examples and any help text.
+2. **Fix errors systematically**
+   - Don’t stop after fixing one file; iterate until the workspace is clean for the area you changed.
+3. **Re-validate after each fix**
+   - Re-run the relevant smoke checks (below). If behavior changed, refresh docs immediately.
+4. **Keep outputs out of git**
+   - Do not commit generated audio, packs, or local catalogs. Extend `.gitignore` instead.
+5. **Explain changes**
+   - State what was wrong, what changed, and what to run to verify.
+
+### “Scan likely impact radius” definition
+After the workspace-wide scan, proactively review the connected modules/configs that must remain consistent so we don’t ship a change that breaks generation/export.
+
+### Impact radius checklists
+- **Audio format / I/O changes** ([src/soundgen/io_utils.py](../src/soundgen/io_utils.py))
+  - Ensure all intermediate arrays remain mono `float32` in `[-1, 1]`.
+  - WAV write stays Minecraft-friendly (`PCM_16`) unless there’s a strong reason.
+- **Post-process / QA changes** ([src/soundgen/postprocess.py](../src/soundgen/postprocess.py), [src/soundgen/qa.py](../src/soundgen/qa.py))
+  - Confirm no NaNs/inf introduced; confirm final clip to `[-1, 1]` remains.
+  - Ensure trimming never returns empty audio (downstream code expects non-empty).
+- **Minecraft export changes** ([src/soundgen/minecraft.py](../src/soundgen/minecraft.py))
+  - Keep event ids sanitized and stable: `<namespace>:<event>`.
+  - Preserve `sounds.json` schema: event → `{sounds: [...]}` with object entries for `name/weight/volume/pitch`.
+  - Verify subtitle writes both `sounds.json` and `assets/<ns>/lang/en_us.json`.
+  - Re-check ffmpeg discovery and the `wav->ogg` conversion command.
+- **Engine wiring changes** ([src/soundgen/generate.py](../src/soundgen/generate.py), [src/soundgen/audiogen_backend.py](../src/soundgen/audiogen_backend.py), [src/soundgen/rfxgen_backend.py](../src/soundgen/rfxgen_backend.py), [src/soundgen/replicate_backend.py](../src/soundgen/replicate_backend.py))
+  - Keep heavy deps lazily imported so `--help` stays fast.
+  - Maintain deterministic behavior with `--seed` where supported.
+  - Ensure rfxgen executable resolution still supports PATH + `tools/rfxgen/rfxgen.exe` + `--rfxgen-path`.
+- **Web UI changes** ([src/soundgen/web.py](../src/soundgen/web.py))
+  - Keep UI controls in sync with CLI meaning (post-processing, Minecraft export fields).
+  - Verify generated file + playsound string + QA text still return correctly.
+- **Batch / docs workflow changes** ([src/soundgen/batch.py](../src/soundgen/batch.py), [src/soundgen/from_docs.py](../src/soundgen/from_docs.py))
+  - Keep manifest schema backwards compatible when possible.
+  - Confirm `pre_gen_sound/` is still gitignored and doc parsing remains robust.
+
+## Copilot behavior rules (repo-specific)
+- Don’t introduce stereo processing unless explicitly requested; default is mono.
+- Don’t change Minecraft id sanitization rules casually; they affect pack compatibility.
+- Don’t add new engine dependencies that break `--help` (keep imports lazy).
+- If you add a new feature, wire it through the CLI first (`soundgen.generate`), then optionally the Gradio UI.
+
 ## Quick smoke checks
 - CLI generation: `python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --out outputs\\test.wav --post`
 - Minecraft export: `python -m soundgen.generate --engine rfxgen --minecraft --namespace mymod --event ui.coin --prompt "coin pickup" --post`
