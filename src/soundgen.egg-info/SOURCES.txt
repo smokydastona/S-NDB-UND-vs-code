@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/soundgen/__init__.py
+src/soundgen/audiogen_backend.py
+src/soundgen/generate.py
+src/soundgen/io_utils.py
+src/soundgen/web.py
+src/soundgen.egg-info/PKG-INFO
+src/soundgen.egg-info/SOURCES.txt
+src/soundgen.egg-info/dependency_links.txt
+src/soundgen.egg-info/top_level.txt

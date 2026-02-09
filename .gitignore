@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.pkl
+
+# Envs
+.venv/
+venv/
+
+# Outputs
+outputs/
+*.wav
+*.ogg
+
+# Examples (local sandbox)
+.examples/
+example_*.json
+
+# Minecraft pack output (default)
+resourcepack/
+
+# Optional local tools
+tools/rfxgen/
+
+# OS
+.DS_Store
+Thumbs.db
