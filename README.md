@@ -123,6 +123,18 @@ python -m soundgen.batch --manifest sounds.json --pack-root resourcepack --mc-ta
 
 This appends a local catalog to `library/catalog.jsonl`.
 
+## Doc → prompt workflow (pre_gen_sound)
+
+Drop `.docx`, `.txt`, or `.md` files into `pre_gen_sound/` (this folder is gitignored).
+
+Then run:
+
+```powershell
+python -m soundgen.from_docs --engine rfxgen --namespace mymod --event-prefix ui.docs --variants 2 --post
+```
+
+This reads each document, converts it into a prompt, and exports `.ogg` + `sounds.json` into `resourcepack/` by default.
+
 ## Optional paid API engine: Replicate
 
 Set your token:

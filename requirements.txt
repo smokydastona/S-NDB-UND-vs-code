@@ -5,6 +5,7 @@ scipy>=1.11
 torch>=2.6
 requests>=2.32
 matplotlib>=3.8
+python-docx>=1.1
 
 # Model (Diffusers text-to-audio)
 diffusers>=0.32
