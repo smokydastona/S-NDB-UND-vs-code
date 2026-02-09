@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+
+_MD_ENTRY_HEADING_RE = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+_MD_PROMPT_RE = re.compile(r"^\s*-\s*\*\*Prompt\*\*:\s*(.+?)\s*$", re.MULTILINE)
+_MD_SOUNDEVENT_RE = re.compile(r"^\s*-\s*\*\*SoundEvent\*\*:\s*`([^`]+)`\s*$", re.MULTILINE)
 
 
 class UnsupportedDocumentError(RuntimeError):
@@ -60,3 +66,74 @@ def to_prompt(text: str, *, max_chars: int = 2000) -> str:
     if len(t) > max_chars:
         t = t[: max_chars - 1].rstrip() + "…"
     return t
+
+
+def extract_sound_prompts(text: str) -> list[dict[str, str]]:
+    """Extract multiple sound prompts from a doc.
+
+    Supports an "auto" heuristic focused on Markdown docs like `pregen_sound_bible.md`:
+    - Each entry starts with a `### <id>` heading
+    - Contains a `- **Prompt**: "..."` line
+    - May contain `- **SoundEvent**: `<namespace>:<event>`
+
+    Returns a list of dicts like:
+      {"title": ..., "prompt": ..., "namespace": ..., "event": ...}
+
+    If no multi-prompt structure is detected, returns an empty list.
+    """
+
+    if not text.strip():
+        return []
+
+    headings = list(_MD_ENTRY_HEADING_RE.finditer(text))
+    if not headings:
+        return []
+
+    entries: list[dict[str, str]] = []
+    for idx, h in enumerate(headings):
+        title = (h.group(1) or "").strip()
+        start = h.end()
+        end = headings[idx + 1].start() if idx + 1 < len(headings) else len(text)
+        block = text[start:end]
+
+        pm = _MD_PROMPT_RE.search(block)
+        if not pm:
+            continue
+
+        raw_prompt = (pm.group(1) or "").strip()
+        # prompt is usually quoted: "..."; accept either.
+        if (raw_prompt.startswith('"') and raw_prompt.endswith('"')) or (
+            raw_prompt.startswith("'") and raw_prompt.endswith("'")
+        ):
+            raw_prompt = raw_prompt[1:-1].strip()
+
+        if not raw_prompt:
+            continue
+
+        namespace = ""
+        event = ""
+        sem = _MD_SOUNDEVENT_RE.search(block)
+        if sem:
+            se = (sem.group(1) or "").strip()
+            if ":" in se:
+                ns, ev = se.split(":", 1)
+                namespace = ns.strip()
+                event = ev.strip()
+            else:
+                event = se
+
+        if not event:
+            # In pregen docs, the `###` heading is typically the desired sounds.json key.
+            event = title
+
+        entries.append(
+            {
+                "title": title,
+                "prompt": raw_prompt,
+                "namespace": namespace,
+                "event": event,
+            }
+        )
+
+    # Only treat as multi-prompt if we found 2+ entries.
+    return entries if len(entries) >= 2 else []

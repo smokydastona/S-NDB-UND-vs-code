@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
 from .manifest import ManifestItem
-from .doc_reader import UnsupportedDocumentError, read_document_text, to_prompt
+from .doc_reader import UnsupportedDocumentError, extract_sound_prompts, read_document_text, to_prompt
 from .batch import run_item
 
 
@@ -50,6 +51,15 @@ def build_parser() -> argparse.ArgumentParser:
     # Minecraft export settings
     p.add_argument("--pack-root", default="resourcepack")
     p.add_argument("--mc-target", choices=["resourcepack", "forge"], default="resourcepack")
+    p.add_argument(
+        "--pack-per-doc",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "If true (default), each input document is exported into its own fresh pack folder under --pack-root. "
+            "Example: --pack-root resourcepack => resourcepack/<doc_stem>/."
+        ),
+    )
     p.add_argument("--ogg-quality", type=int, default=5)
     p.add_argument("--mc-sample-rate", type=int, default=44100)
     p.add_argument("--mc-channels", type=int, default=1)
@@ -92,9 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No supported docs found in {in_dir} (glob={args.glob})")
         return 0
 
-    # Build the args object expected by batch.run_item
+    # Build the base args object expected by batch.run_item
+    base_pack_root = Path(args.pack_root)
     run_args = SimpleNamespace(
-        pack_root=args.pack_root,
+        pack_root=str(base_pack_root),
         mc_target=args.mc_target,
         ogg_quality=args.ogg_quality,
         mc_sample_rate=args.mc_sample_rate,
@@ -108,13 +119,75 @@ def main(argv: list[str] | None = None) -> int:
 
     exported = 0
     for doc in sorted(files):
+        # Optionally create a fresh pack root per document.
+        if bool(args.pack_per_doc):
+            doc_pack_root = base_pack_root / _slug(doc.stem)
+            if doc_pack_root.exists():
+                shutil.rmtree(doc_pack_root, ignore_errors=True)
+            doc_pack_root.mkdir(parents=True, exist_ok=True)
+            run_args.pack_root = str(doc_pack_root)
+            print(f"Pack root (doc): {doc_pack_root}")
+        else:
+            run_args.pack_root = str(base_pack_root)
+
         try:
             raw = read_document_text(doc)
-            prompt = to_prompt(raw)
         except UnsupportedDocumentError as e:
             print(f"Skip {doc.name}: {e}")
             continue
 
+        # Multi-entry docs: generate an entire family of sounds.
+        entries = extract_sound_prompts(raw)
+        if entries:
+            print(f"Doc entries: {doc.name} -> {len(entries)} sounds")
+            for e in entries:
+                # If the doc provides a namespace and the user didn't override the default, adopt it.
+                namespace = args.namespace
+                if namespace == "soundgen" and e.get("namespace"):
+                    namespace = str(e["namespace"]).strip()
+
+                event = str(e.get("event") or "").strip()
+                if not event:
+                    continue
+
+                # Compute a stable sound_path from the event, unless user asked for a fixed prefix.
+                # Convert dots to folders to keep packs tidy.
+                event_for_path = event.replace(":", ".")
+                sound_path = (args.sound_path_prefix or "generated/docs")
+                sound_path = f"{sound_path}/{event_for_path.replace('.', '/')}"
+
+                subtitle = args.subtitle or e.get("title") or doc.stem
+
+                item = ManifestItem(
+                    prompt=str(e.get("prompt") or "").strip(),
+                    engine=args.engine,
+                    namespace=namespace,
+                    event=event,
+                    sound_path=sound_path,
+                    seconds=float(args.seconds),
+                    seed=args.seed,
+                    preset=args.preset,
+                    variants=max(1, int(args.variants)),
+                    weight=max(1, int(args.weight)),
+                    volume=float(args.volume),
+                    pitch=float(args.pitch),
+                    subtitle=str(subtitle) if subtitle else None,
+                    post=bool(args.post),
+                    tags=("from_doc", doc.suffix.lower().lstrip(".")),
+                )
+
+                if not item.prompt:
+                    continue
+
+                outs = run_item(item, args=run_args)
+                exported += len(outs)
+                for o in outs:
+                    print(f"Wrote {o}")
+                print(f"Playsound: /playsound {namespace}:{event} master @s")
+            continue
+
+        # Fallback: treat the full doc as one prompt.
+        prompt = to_prompt(raw)
         if not prompt:
             print(f"Skip {doc.name}: empty prompt")
             continue
