@@ -19,7 +19,6 @@
 - `diffusers` engine: `src/soundgen/audiogen_backend.py`
   - Uses `AudioLDM2Pipeline`; includes a GPT-2 LM head workaround.
 - `rfxgen` engine: `src/soundgen/rfxgen_backend.py`
-  - External `rfxgen.exe`; Windows helper: [scripts/get_rfxgen.ps1](../scripts/get_rfxgen.ps1)
   - External `rfxgen.exe`; Windows helper: `scripts/get_rfxgen.ps1`
 - Optional paid API engine: `replicate` in `src/soundgen/replicate_backend.py`
   - Token via `REPLICATE_API_TOKEN` or `--replicate-token`.
