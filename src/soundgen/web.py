@@ -831,7 +831,7 @@ def build_demo() -> gr.Blocks:
                     label="Model",
                 )
 
-            with gr.Accordion("Stable Audio Open (engine settings)", open=False):
+            with gr.Accordion("Stable Audio Open (engine settings)", open=False, visible=False) as stable_audio_acc:
                 stable_audio_model = gr.Dropdown(
                     ["stabilityai/stable-audio-open-1.0"],
                     value="stabilityai/stable-audio-open-1.0",
@@ -848,7 +848,7 @@ def build_demo() -> gr.Blocks:
                     label="Sampler (scheduler)",
                 )
 
-            with gr.Accordion("Diffusers multi-band (model-side)", open=False):
+            with gr.Accordion("Diffusers multi-band (model-side)", open=False, visible=True) as diffusers_mb_acc:
                 diffusers_multiband = gr.Checkbox(value=False, label="Enable multi-band diffusers (slower, cleaner bands)")
                 diffusers_mb_mode = gr.Dropdown(["auto", "2band", "3band"], value="auto", label="Bands")
                 with gr.Row():
@@ -856,15 +856,20 @@ def build_demo() -> gr.Blocks:
                     diffusers_mb_high_hz = gr.Slider(800.0, 8000.0, value=3000.0, step=50.0, label="High crossover (Hz)")
 
             with gr.Row():
-                preset = gr.Dropdown(list(SUPPORTED_PRESETS), value="blip", label="rfxgen preset")
-                rfxgen_path = gr.Textbox(value="", label="rfxgen path (optional)", placeholder="e.g. tools/rfxgen/rfxgen.exe")
+                preset = gr.Dropdown(list(SUPPORTED_PRESETS), value="blip", label="rfxgen preset", visible=False)
+                rfxgen_path = gr.Textbox(
+                    value="",
+                    label="rfxgen path (optional)",
+                    placeholder="e.g. tools/rfxgen/rfxgen.exe",
+                    visible=False,
+                )
 
-            with gr.Accordion("Replicate (paid API engine)", open=False):
+            with gr.Accordion("Replicate (paid API engine)", open=False, visible=False) as replicate_acc:
                 replicate_model = gr.Textbox(value="", label="Replicate model (optional)", placeholder="e.g. owner/model")
                 replicate_token = gr.Textbox(value="", label="Replicate token (optional; not saved)")
                 replicate_input_json = gr.Textbox(value="", label="Extra input JSON (optional)", placeholder='{ "cfg": 7.0 }')
 
-            with gr.Accordion("Sample library (engine=samplelib)", open=False):
+            with gr.Accordion("Sample library (engine=samplelib)", open=False, visible=False) as samplelib_acc:
                 samplelib_zips = gr.File(
                     file_count="multiple",
                     file_types=[".zip"],
@@ -876,9 +881,9 @@ def build_demo() -> gr.Blocks:
                     library_index = gr.Textbox(value="library/samplelib_index.json", label="Index cache path (blank disables)")
 
             with gr.Row():
-                library_mix_count = gr.Slider(1, 2, value=1, step=1, label="samplelib mix count")
+                library_mix_count = gr.Slider(1, 2, value=1, step=1, label="samplelib mix count", visible=False)
 
-            with gr.Accordion("Synth (engine=synth)", open=False):
+            with gr.Accordion("Synth (engine=synth)", open=False, visible=False) as synth_acc:
                 with gr.Row():
                     synth_waveform = gr.Dropdown(["sine", "square", "saw", "triangle", "noise"], value="sine", label="Waveform")
                     synth_freq_hz = gr.Slider(40.0, 4000.0, value=440.0, step=1.0, label="Base frequency (Hz)")
@@ -897,68 +902,69 @@ def build_demo() -> gr.Blocks:
                     synth_lowpass_hz = gr.Slider(200.0, 20000.0, value=16000.0, step=50.0, label="Lowpass (Hz)")
                     synth_highpass_hz = gr.Slider(0.0, 2000.0, value=30.0, step=10.0, label="Highpass (Hz)")
 
-            with gr.Row():
-                layered_preset = gr.Dropdown(
-                    ["auto", "ui", "impact", "whoosh", "creature"],
-                    value="auto",
-                    label="layered preset",
-                )
-                layered_curve = gr.Dropdown(["linear", "exponential"], value="linear", label="layered curve")
-                layered_duck = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="layered duck (transient→body)")
-                layered_family = gr.Checkbox(value=True, label="layered family mode")
-                layered_source_lock = gr.Checkbox(value=True, label="layered source lock")
-                layered_source_seed = gr.Number(value=None, precision=0, label="layered source seed (optional)", visible=False)
-                layered_micro_variation = gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="layered micro-variation")
-                layered_granular_preset = gr.Dropdown(
-                    ["off", "auto", "chitter", "rasp", "buzz", "screech"],
-                    value="off",
-                    label="layered granular preset",
-                )
-                layered_granular_amount = gr.Slider(
-                    0.0,
-                    1.0,
-                    value=0.0,
-                    step=0.05,
-                    label="layered granular amount",
-                    visible=False,
-                )
-                layered_granular_grain_ms = gr.Slider(
-                    6.0,
-                    120.0,
-                    value=28.0,
-                    step=1.0,
-                    label="layered granular grain (ms)",
-                    visible=False,
-                )
-                layered_granular_spray = gr.Slider(
-                    0.0,
-                    1.0,
-                    value=0.35,
-                    step=0.05,
-                    label="layered granular spray",
-                    visible=False,
-                )
-                layered_transient_sharpness = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="layered transient sharpness")
-                layered_tail_length_ms = gr.Slider(80, 1200, value=350, step=10, label="layered tail length (ms)")
+            with gr.Column(visible=False) as layered_col:
+                with gr.Row():
+                    layered_preset = gr.Dropdown(
+                        ["auto", "ui", "impact", "whoosh", "creature"],
+                        value="auto",
+                        label="layered preset",
+                    )
+                    layered_curve = gr.Dropdown(["linear", "exponential"], value="linear", label="layered curve")
+                    layered_duck = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="layered duck (transient→body)")
+                    layered_family = gr.Checkbox(value=True, label="layered family mode")
+                    layered_source_lock = gr.Checkbox(value=True, label="layered source lock")
+                    layered_source_seed = gr.Number(value=None, precision=0, label="layered source seed (optional)", visible=False)
+                    layered_micro_variation = gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="layered micro-variation")
+                    layered_granular_preset = gr.Dropdown(
+                        ["off", "auto", "chitter", "rasp", "buzz", "screech"],
+                        value="off",
+                        label="layered granular preset",
+                    )
+                    layered_granular_amount = gr.Slider(
+                        0.0,
+                        1.0,
+                        value=0.0,
+                        step=0.05,
+                        label="layered granular amount",
+                        visible=False,
+                    )
+                    layered_granular_grain_ms = gr.Slider(
+                        6.0,
+                        120.0,
+                        value=28.0,
+                        step=1.0,
+                        label="layered granular grain (ms)",
+                        visible=False,
+                    )
+                    layered_granular_spray = gr.Slider(
+                        0.0,
+                        1.0,
+                        value=0.35,
+                        step=0.05,
+                        label="layered granular spray",
+                        visible=False,
+                    )
+                    layered_transient_sharpness = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="layered transient sharpness")
+                    layered_tail_length_ms = gr.Slider(80, 1200, value=350, step=10, label="layered tail length (ms)")
 
-            with gr.Accordion("Layered (advanced timing/envelopes)", open=False):
-                gr.Markdown("Leave blank to use the simple knobs / defaults.")
-                with gr.Row():
-                    layered_transient_ms_adv = gr.Number(value=None, precision=0, label="transient window (ms)")
-                    layered_tail_ms_adv = gr.Number(value=None, precision=0, label="tail window (ms)")
-                with gr.Row():
-                    layered_transient_attack_ms_adv = gr.Number(value=None, precision=1, label="transient attack (ms)")
-                    layered_transient_hold_ms_adv = gr.Number(value=None, precision=1, label="transient hold (ms)")
-                    layered_transient_decay_ms_adv = gr.Number(value=None, precision=1, label="transient decay (ms)")
-                with gr.Row():
-                    layered_body_attack_ms_adv = gr.Number(value=None, precision=1, label="body attack (ms)")
-                    layered_body_hold_ms_adv = gr.Number(value=None, precision=1, label="body hold (ms)")
-                    layered_body_decay_ms_adv = gr.Number(value=None, precision=1, label="body decay (ms)")
-                with gr.Row():
-                    layered_tail_attack_ms_adv = gr.Number(value=None, precision=1, label="tail attack (ms)")
-                    layered_tail_hold_ms_adv = gr.Number(value=None, precision=1, label="tail hold (ms)")
-                    layered_tail_decay_ms_adv = gr.Number(value=None, precision=1, label="tail decay (ms)")
-                layered_duck_release_ms_adv = gr.Number(value=None, precision=1, label="duck release (ms)")
+                with gr.Accordion("Layered (advanced timing/envelopes)", open=False, visible=False) as layered_adv_acc:
+                    gr.Markdown("Leave blank to use the simple knobs / defaults.")
+                    with gr.Row():
+                        layered_transient_ms_adv = gr.Number(value=None, precision=0, label="transient window (ms)")
+                        layered_tail_ms_adv = gr.Number(value=None, precision=0, label="tail window (ms)")
+                    with gr.Row():
+                        layered_transient_attack_ms_adv = gr.Number(value=None, precision=1, label="transient attack (ms)")
+                        layered_transient_hold_ms_adv = gr.Number(value=None, precision=1, label="transient hold (ms)")
+                        layered_transient_decay_ms_adv = gr.Number(value=None, precision=1, label="transient decay (ms)")
+                    with gr.Row():
+                        layered_body_attack_ms_adv = gr.Number(value=None, precision=1, label="body attack (ms)")
+                        layered_body_hold_ms_adv = gr.Number(value=None, precision=1, label="body hold (ms)")
+                        layered_body_decay_ms_adv = gr.Number(value=None, precision=1, label="body decay (ms)")
+                    with gr.Row():
+                        layered_tail_attack_ms_adv = gr.Number(value=None, precision=1, label="tail attack (ms)")
+                        layered_tail_hold_ms_adv = gr.Number(value=None, precision=1, label="tail hold (ms)")
+                        layered_tail_decay_ms_adv = gr.Number(value=None, precision=1, label="tail decay (ms)")
+                    layered_duck_release_ms_adv = gr.Number(value=None, precision=1, label="duck release (ms)")
 
             layered_source_lock.change(
                 fn=lambda v: gr.update(visible=bool(v)),
@@ -976,10 +982,54 @@ def build_demo() -> gr.Blocks:
                 outputs=[layered_granular_amount, layered_granular_grain_ms, layered_granular_spray],
             )
 
-            with gr.Row():
+            with gr.Row(visible=False) as layered_tilt_row:
                 layered_transient_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered transient tilt")
                 layered_body_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered body tilt")
                 layered_tail_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered tail tilt")
+
+            def _update_engine_sections(eng: str):
+                e = str(eng or "").strip().lower()
+                is_diffusers = e == "diffusers"
+                is_stable = e == "stable_audio_open"
+                is_rfx = e == "rfxgen"
+                is_rep = e == "replicate"
+                is_sample = e == "samplelib"
+                is_synth = e == "synth"
+                is_layered = e == "layered"
+
+                return (
+                    gr.update(visible=is_diffusers),
+                    gr.update(visible=is_stable, open=is_stable),
+                    gr.update(visible=is_diffusers),
+                    gr.update(visible=is_rfx),
+                    gr.update(visible=is_rfx),
+                    gr.update(visible=is_rep, open=is_rep),
+                    gr.update(visible=(is_sample or is_layered), open=False),
+                    gr.update(visible=(is_sample or is_layered)),
+                    gr.update(visible=(is_synth or is_layered), open=False),
+                    gr.update(visible=is_layered),
+                    gr.update(visible=is_layered),
+                    gr.update(visible=is_layered, open=False),
+                )
+
+            engine.change(
+                fn=_update_engine_sections,
+                inputs=[engine],
+                outputs=[
+                    model,
+                    stable_audio_acc,
+                    diffusers_mb_acc,
+                    preset,
+                    rfxgen_path,
+                    replicate_acc,
+                    samplelib_acc,
+                    library_mix_count,
+                    synth_acc,
+                    layered_col,
+                    layered_tilt_row,
+                    layered_adv_acc,
+                ],
+            )
 
         with gr.Accordion("Prompt & duration", open=True):
             with gr.Row():
