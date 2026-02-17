@@ -60,6 +60,30 @@ def generate_wav(
     synth_pitch_max: float = 1.10,
     synth_lowpass_hz: float = 16000.0,
     synth_highpass_hz: float = 30.0,
+    # layered
+    layered_preset: str = "auto",
+    layered_preset_lock: bool = True,
+    layered_variant_index: int = 0,
+    layered_micro_variation: float = 0.0,
+    layered_env_curve_shape: str = "linear",
+    layered_transient_tilt: float = 0.0,
+    layered_body_tilt: float = 0.0,
+    layered_tail_tilt: float = 0.0,
+    layered_source_lock: bool = False,
+    layered_source_seed: int | None = None,
+    layered_transient_ms: int = 110,
+    layered_tail_ms: int = 350,
+    layered_transient_attack_ms: float = 1.0,
+    layered_transient_hold_ms: float = 10.0,
+    layered_transient_decay_ms: float = 90.0,
+    layered_body_attack_ms: float = 5.0,
+    layered_body_hold_ms: float = 0.0,
+    layered_body_decay_ms: float = 80.0,
+    layered_tail_attack_ms: float = 15.0,
+    layered_tail_hold_ms: float = 0.0,
+    layered_tail_decay_ms: float = 320.0,
+    layered_duck_amount: float = 0.35,
+    layered_duck_release_ms: float = 90.0,
     sample_rate: int = 44100,
 ) -> GeneratedWav:
     """Generate a mono WAV file for any engine.
@@ -183,6 +207,74 @@ def generate_wav(
             audio, post_info = postprocess_fn(audio, sr)
         write_wav(out_wav, audio, sr)
         credits_extra = {"waveform": sp.waveform, "freq_hz": sp.freq_hz}
+        return GeneratedWav(wav_path=out_wav, post_info=post_info, sources=sources, credits_extra=credits_extra)
+
+    if engine == "layered":
+        from .layered_backend import LayeredParams, generate_with_layered
+
+        lp = LayeredParams(
+            prompt=prompt,
+            seconds=float(seconds),
+            seed=seed,
+            sample_rate=int(sample_rate),
+
+            preset=str(layered_preset),
+            preset_lock=bool(layered_preset_lock),
+            variant_index=int(layered_variant_index),
+            micro_variation=float(layered_micro_variation),
+            env_curve_shape=str(layered_env_curve_shape),
+            transient_tilt=float(layered_transient_tilt),
+            body_tilt=float(layered_body_tilt),
+            tail_tilt=float(layered_tail_tilt),
+            source_lock=bool(layered_source_lock),
+            source_seed=(int(layered_source_seed) if layered_source_seed is not None else None),
+
+            library_zips=tuple(Path(p) for p in library_zips),
+            library_pitch_min=float(library_pitch_min),
+            library_pitch_max=float(library_pitch_max),
+            library_mix_count=int(library_mix_count),
+            library_index_path=library_index_path,
+
+            transient_ms=int(layered_transient_ms),
+            tail_ms=int(layered_tail_ms),
+
+            transient_attack_ms=float(layered_transient_attack_ms),
+            transient_hold_ms=float(layered_transient_hold_ms),
+            transient_decay_ms=float(layered_transient_decay_ms),
+
+            body_attack_ms=float(layered_body_attack_ms),
+            body_hold_ms=float(layered_body_hold_ms),
+            body_decay_ms=float(layered_body_decay_ms),
+
+            tail_attack_ms=float(layered_tail_attack_ms),
+            tail_hold_ms=float(layered_tail_hold_ms),
+            tail_decay_ms=float(layered_tail_decay_ms),
+
+            duck_amount=float(layered_duck_amount),
+            duck_release_ms=float(layered_duck_release_ms),
+
+            synth_waveform=str(synth_waveform),
+            synth_freq_hz=float(synth_freq_hz),
+            synth_pitch_min=float(synth_pitch_min),
+            synth_pitch_max=float(synth_pitch_max),
+            synth_attack_ms=float(synth_attack_ms),
+            synth_decay_ms=float(synth_decay_ms),
+            synth_sustain_level=float(synth_sustain_level),
+            synth_release_ms=float(synth_release_ms),
+            synth_noise_mix=float(synth_noise_mix),
+            synth_lowpass_hz=float(synth_lowpass_hz),
+            synth_highpass_hz=float(synth_highpass_hz),
+            synth_drive=float(synth_drive),
+        )
+
+        res = generate_with_layered(lp)
+        audio = res.audio
+        sr = int(res.sample_rate)
+        if postprocess_fn is not None:
+            audio, post_info = postprocess_fn(audio, sr)
+        write_wav(out_wav, audio, sr)
+        sources = tuple(res.sources)
+        credits_extra = dict(res.credits_extra)
         return GeneratedWav(wav_path=out_wav, post_info=post_info, sources=sources, credits_extra=credits_extra)
 
     raise ValueError(f"Unknown engine: {engine}")

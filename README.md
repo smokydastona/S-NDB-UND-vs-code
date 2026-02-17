@@ -2,12 +2,13 @@
 
 Generate short sound effects from a text prompt.
 
-This project supports four engines:
+This project supports five engines:
 
 - **diffusers**: AI prompt-to-audio (AudioLDM2)
 - **rfxgen**: procedural chiptune-style SFX presets (coin/laser/explosion/etc)
 - **samplelib**: picks + randomizes samples from ZIP sound libraries (uses ffmpeg to decode)
 - **synth**: DSP synth engine (waveforms + ADSR + filters + drive)
+- **layered**: hybrid engine (samplelib transient/tail + synth body)
 
 ## Setup (Windows)
 
@@ -30,6 +31,19 @@ pip install -r requirements.txt
 
 ```powershell
 	python -m soundgen.generate --prompt "laser zap" --seconds 2.5 --out outputs\laser.wav
+```
+
+### Polish mode (DSP)
+
+In addition to basic `--post` (trim/fade/normalize/EQ), you can enable a conservative “studio polish” chain:
+
+- gentle spectral denoise
+- transient shaping
+- compression
+- soft limiting
+
+```powershell
+python -m soundgen.generate --engine layered --polish --prompt "melee hit" --seconds 1.0 --out outputs\hit_polished.wav
 ```
 
 ### Export format options (non-Minecraft)
@@ -116,6 +130,85 @@ You can also point at your own ZIP(s):
 ```powershell
 python -m soundgen.generate --engine samplelib --library-zip "C:\path\to\MyLibrary.zip" --prompt "metal clank" --out outputs\clank.wav
 ```
+
+### Hybrid layered engine (layered)
+
+Composes a short transient + a tail (from `samplelib`) with a synth “body” layer for richer structure:
+
+```powershell
+python -m soundgen.generate --engine layered --prompt "coin pickup" --seconds 1.5 --post --out outputs\layered_coin.wav
+```
+
+Presets + interaction + envelopes (minimal designer controls):
+
+```powershell
+# A whooshy family you can iterate deterministically with --seed
+python -m soundgen.generate --engine layered --layered-preset whoosh --seed 123 --prompt "wind swoosh" --seconds 2.0 --out outputs\whoosh.wav
+
+# Make the hit sharper + duck the body under the transient
+python -m soundgen.generate --engine layered --layered-preset impact --layered-transient-attack-ms 0.5 --layered-transient-decay-ms 60 --layered-duck 0.6 --prompt "melee hit" --seconds 1.0 --out outputs\hit.wav
+```
+
+Curve shapes + spectral tilt + family micro-variation:
+
+```powershell
+# Keep character locked (same seed), vary subtly per variant
+python -m soundgen.generate --engine layered --minecraft --namespace mymod --event ui.hit --variants 3 --seed 123 --layered-family --layered-micro-variation 0.35 --layered-curve exponential --layered-transient-tilt 0.3 --layered-body-tilt -0.2 --layered-tail-tilt 0.6 --prompt "melee hit"
+```
+
+Source lock (pin transient/tail samples across variants):
+
+```powershell
+# Keep the sample-backed transient + tail pinned, while still allowing per-variant micro-variation
+python -m soundgen.generate --engine layered --minecraft --namespace mymod --event ui.hit --variants 3 --seed 123 --layered-family --layered-source-lock --layered-micro-variation 0.35 --prompt "melee hit"
+```
+
+How `family` + `source lock` + `micro-variation` interact (high-level):
+
+```mermaid
+flowchart LR
+	A[Base seed --seed] --> B{Layered family mode?}
+
+	B -- yes --> C[Body seed = base seed]
+	B -- no --> D[Body seed = base seed + variant_index]
+
+	E[variant_index (0..N-1)] --> D
+	E --> F[Micro-variation jitter
+	(deterministic per variant)]
+
+	C --> G[Synth body params]
+	D --> G
+	F --> G
+
+	H{Source lock?} --> I[Source seed =
+	(override if set) else base seed]
+	H -- no --> J[Source seed = body seed]
+
+	I --> K[Pick transient sample (samplelib)]
+	I --> L[Pick tail sample (samplelib)]
+	J --> K
+	J --> L
+
+	K --> M[Transient layer]
+	G --> N[Body layer]
+	L --> O[Tail layer]
+	M --> P[Mix + optional polish]
+	N --> P
+	O --> P
+```
+
+Layered controls: CLI ↔ Gradio mapping (quick reference)
+
+| Concept | CLI flag(s) | Gradio (Engine=layered) |
+|---|---|---|
+| Family mode | `--layered-family` | “layered family mode” (checkbox) |
+| Micro-variation | `--layered-micro-variation <0..1>` | “layered micro-variation” (slider) |
+| Source lock | `--layered-source-lock` | “layered source lock” (checkbox) |
+| Source seed override | `--layered-source-seed <int>` | “layered source seed (optional)” (number; only shown when source lock is on) |
+| Envelopes (A/H/D) | `--layered-<layer>-attack-ms`, `--layered-<layer>-hold-ms`, `--layered-<layer>-decay-ms` for `transient/body/tail` | Not exposed (CLI-only) |
+| Envelope curve | `--layered-curve {linear,exponential}` | “layered curve” (dropdown) |
+| Spectral tilt | `--layered-transient-tilt`, `--layered-body-tilt`, `--layered-tail-tilt` | “layered transient/body/tail tilt” (sliders) |
+| Polish mode | `--polish` | “Polish mode (denoise/transients/compress/limit)” (checkbox) |
 
 ## Minecraft resource pack output (.ogg)
 

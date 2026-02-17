@@ -28,6 +28,18 @@ def _generate(
     rfxgen_path: str,
     library_mix_count: int,
     synth_waveform: str,
+    layered_preset: str,
+    layered_curve: str,
+    layered_duck: float,
+    layered_family: bool,
+    layered_source_lock: bool,
+    layered_source_seed: float | None,
+    layered_micro_variation: float,
+    layered_transient_sharpness: float,
+    layered_tail_length_ms: int,
+    layered_transient_tilt: float,
+    layered_body_tilt: float,
+    layered_tail_tilt: float,
     out_format: str,
     out_sample_rate: int | None,
     wav_subtype: str,
@@ -67,7 +79,8 @@ def _generate(
         if hints.lowpass_hz is not None:
             params = replace(params, lowpass_hz=float(hints.lowpass_hz))
         return params
-
+        post: bool,
+        polish: bool,
     def _qa_info(audio: np.ndarray, sr: int) -> str:
         m = compute_metrics(audio, sr)
         flags: list[str] = []
@@ -87,7 +100,7 @@ def _generate(
     def _maybe_postprocess_wav(wav_path: Path) -> tuple[np.ndarray, int, str]:
         a, sr = read_wav_mono(wav_path)
         a, info = _maybe_postprocess_array(a, sr)
-        if post:
+        if post or polish:
             write_wav(wav_path, a, sr)
         return a, sr, info
 
@@ -147,6 +160,16 @@ def _generate(
     spec_img = None
 
     default_zips = tuple(Path(".examples").joinpath("sound libraies").glob("*.zip"))
+
+    def _lerp(a: float, b: float, t: float) -> float:
+        tt = float(np.clip(t, 0.0, 1.0))
+        return float(a + (b - a) * tt)
+
+    sharp = float(np.clip(float(layered_transient_sharpness), 0.0, 1.0))
+    transient_attack_ms = _lerp(3.0, 0.3, sharp)
+    transient_decay_ms = _lerp(140.0, 45.0, sharp)
+    tail_len_ms = int(np.clip(int(layered_tail_length_ms), 80, 2000))
+    tail_decay_ms = max(30.0, float(tail_len_ms) - 40.0)
     synth_attack = float(hints.attack_ms) if hints and hints.attack_ms is not None else 5.0
     synth_release = float(hints.release_ms) if hints and hints.release_ms is not None else 120.0
     synth_pitch_min = float(hints.pitch_min) if hints and hints.pitch_min is not None else 0.90
@@ -158,7 +181,14 @@ def _generate(
     for i in range(v):
         suffix = f"_{i+1:02d}" if v > 1 else ""
         wav_path = Path("outputs") / f"web_{engine}{suffix}.wav"
-        seed_i = base_seed + i
+        seed_i = base_seed if (engine == "layered" and layered_family) else (base_seed + i)
+        if engine == "layered" and layered_source_lock:
+            if layered_source_seed is None:
+                source_seed_i = base_seed
+            else:
+                source_seed_i = int(layered_source_seed)
+        else:
+            source_seed_i = None
 
         generated = generate_wav(
             engine,
@@ -182,6 +212,24 @@ def _generate(
             synth_lowpass_hz=synth_lp,
             synth_highpass_hz=synth_hp,
             synth_drive=synth_drive,
+
+            layered_preset=str(layered_preset or "auto"),
+            layered_env_curve_shape=str(layered_curve or "linear"),
+            layered_preset_lock=True,
+            layered_variant_index=int(i),
+            layered_micro_variation=float(layered_micro_variation),
+            layered_transient_tilt=float(layered_transient_tilt),
+            layered_body_tilt=float(layered_body_tilt),
+            layered_tail_tilt=float(layered_tail_tilt),
+            layered_source_lock=bool(layered_source_lock),
+            layered_source_seed=(int(source_seed_i) if source_seed_i is not None else None),
+            layered_duck_amount=float(layered_duck),
+            layered_transient_attack_ms=float(transient_attack_ms),
+            layered_transient_hold_ms=10.0,
+            layered_transient_decay_ms=float(transient_decay_ms),
+            layered_tail_ms=int(tail_len_ms),
+            layered_tail_attack_ms=15.0,
+            layered_tail_decay_ms=float(tail_decay_ms),
         )
         last_file = Path(generated.wav_path)
 
@@ -223,7 +271,7 @@ def _generate(
 def main() -> None:
     with gr.Blocks(title="Sound Generator") as demo:
         gr.Markdown("# Prompt → Sound Effect")
-        engine = gr.Radio(["diffusers", "rfxgen", "samplelib", "synth"], value="diffusers", label="Engine")
+        engine = gr.Radio(["diffusers", "rfxgen", "samplelib", "synth", "layered"], value="diffusers", label="Engine")
         with gr.Row():
             prompt = gr.Textbox(label="Prompt", placeholder="e.g. laser zap, sci-fi blaster, short")
         with gr.Row():
@@ -244,6 +292,32 @@ def main() -> None:
             library_mix_count = gr.Slider(1, 2, value=1, step=1, label="samplelib mix count")
             synth_waveform = gr.Dropdown(["sine", "square", "saw", "triangle", "noise"], value="sine", label="synth waveform")
 
+        with gr.Row():
+            layered_preset = gr.Dropdown(
+                ["auto", "ui", "impact", "whoosh", "creature"],
+                value="auto",
+                label="layered preset",
+            )
+            layered_curve = gr.Dropdown(["linear", "exponential"], value="linear", label="layered curve")
+            layered_duck = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="layered duck (transient→body)")
+            layered_family = gr.Checkbox(value=True, label="layered family mode")
+            layered_source_lock = gr.Checkbox(value=True, label="layered source lock")
+            layered_source_seed = gr.Number(value=None, precision=0, label="layered source seed (optional)", visible=False)
+            layered_micro_variation = gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="layered micro-variation")
+            layered_transient_sharpness = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="layered transient sharpness")
+            layered_tail_length_ms = gr.Slider(80, 1200, value=350, step=10, label="layered tail length (ms)")
+
+        layered_source_lock.change(
+            fn=lambda v: gr.update(visible=bool(v)),
+            inputs=[layered_source_lock],
+            outputs=[layered_source_seed],
+        )
+
+        with gr.Row():
+            layered_transient_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered transient tilt")
+            layered_body_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered body tilt")
+            layered_tail_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered tail tilt")
+
         gr.Markdown("## Export")
         with gr.Row():
             out_format = gr.Dropdown(["wav", "mp3", "ogg", "flac"], value="wav", label="Output format")
@@ -255,6 +329,7 @@ def main() -> None:
         map_controls = gr.Checkbox(value=False, label="Map prompt → control hints")
 
         post = gr.Checkbox(value=True, label="Post-process (trim/fade/normalize/EQ)")
+        polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
 
         gr.Markdown("## Minecraft export (1.20.1)")
         export_minecraft = gr.Checkbox(value=False, label="Export to Minecraft (.ogg + sounds.json)")
@@ -295,6 +370,18 @@ def main() -> None:
                 rfxgen_path,
                 library_mix_count,
                 synth_waveform,
+                layered_preset,
+                layered_curve,
+                layered_duck,
+                layered_family,
+                layered_source_lock,
+                layered_source_seed,
+                layered_micro_variation,
+                layered_transient_sharpness,
+                layered_tail_length_ms,
+                layered_transient_tilt,
+                layered_body_tilt,
+                layered_tail_tilt,
                 out_format,
                 out_sample_rate,
                 wav_subtype,
@@ -313,6 +400,7 @@ def main() -> None:
                 pitch,
                 ogg_quality,
                 post,
+                polish,
             ],
             outputs=[out_file, playsound_cmd, info, wave, spec],
         )

@@ -114,6 +114,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                 device=str(args.device),
                 model=str(args.model),
                 preset=item.preset,
+                layered_preset=(item.preset or "auto"),
                 rfxgen_path=(Path(args.rfxgen_path) if args.rfxgen_path else None),
                 library_zips=tuple(Path(p) for p in zip_args),
                 library_pitch_min=float(args.library_pitch_min),

@@ -20,9 +20,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate a sound effect WAV from a text prompt.")
     p.add_argument(
         "--engine",
-        choices=["diffusers", "rfxgen", "replicate", "samplelib", "synth"],
+        choices=["diffusers", "rfxgen", "replicate", "samplelib", "synth", "layered"],
         default="diffusers",
-        help="Generation engine: diffusers (AI), rfxgen (procedural presets), replicate (paid API), samplelib (sample library zips), or synth (DSP).",
+        help="Generation engine: diffusers (AI), rfxgen (procedural presets), replicate (paid API), samplelib (sample library zips), synth (DSP), or layered (samplelib transient/tail + synth body).",
     )
     p.add_argument("--prompt", required=True, help="Text prompt describing the sound.")
     p.add_argument("--seconds", type=float, default=3.0, help="Duration in seconds.")
@@ -172,6 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
     # Post-processing / QA
     p.add_argument("--post", action="store_true", help="Enable post-processing (trim/fade/normalize/EQ).")
     p.add_argument(
+        "--polish",
+        action="store_true",
+        help="Enable 'Polish Mode' DSP (denoise + transient shaping + compression + limiter). Implies --post.",
+    )
+    p.add_argument(
         "--map-controls",
         action="store_true",
         help="Map common prompt keywords to control hints (loud/soft/bright/muffled/clicky/etc).",
@@ -199,6 +204,65 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--synth-release-ms", type=float, default=120.0)
     p.add_argument("--synth-noise-mix", type=float, default=0.05)
     p.add_argument("--synth-drive", type=float, default=0.0)
+
+    # Layered engine controls
+    p.add_argument(
+        "--layered-preset",
+        choices=["auto", "ui", "impact", "whoosh", "creature"],
+        default="auto",
+        help="layered preset (auto/ui/impact/whoosh/creature)",
+    )
+    p.add_argument("--layered-transient-ms", type=int, default=110, help="layered transient window length (ms)")
+    p.add_argument("--layered-tail-ms", type=int, default=350, help="layered tail window length (ms)")
+
+    p.add_argument("--layered-transient-attack-ms", type=float, default=1.0)
+    p.add_argument("--layered-transient-hold-ms", type=float, default=10.0)
+    p.add_argument("--layered-transient-decay-ms", type=float, default=90.0)
+
+    p.add_argument("--layered-body-attack-ms", type=float, default=5.0)
+    p.add_argument("--layered-body-hold-ms", type=float, default=0.0, help="0 => auto remainder")
+    p.add_argument("--layered-body-decay-ms", type=float, default=80.0)
+
+    p.add_argument("--layered-tail-attack-ms", type=float, default=15.0)
+    p.add_argument("--layered-tail-hold-ms", type=float, default=0.0, help="0 => auto remainder")
+    p.add_argument("--layered-tail-decay-ms", type=float, default=320.0)
+
+    p.add_argument("--layered-duck", type=float, default=0.35, help="Transient ducks body amount (0..1)")
+    p.add_argument("--layered-duck-release-ms", type=float, default=90.0)
+
+    p.add_argument(
+        "--layered-curve",
+        choices=["linear", "exponential"],
+        default="linear",
+        help="Layered envelope curve shape (applies to all layers).",
+    )
+    p.add_argument("--layered-transient-tilt", type=float, default=0.0, help="Transient spectral tilt (-1..+1)")
+    p.add_argument("--layered-body-tilt", type=float, default=0.0, help="Body spectral tilt (-1..+1)")
+    p.add_argument("--layered-tail-tilt", type=float, default=0.0, help="Tail spectral tilt (-1..+1)")
+
+    p.add_argument(
+        "--layered-family",
+        action="store_true",
+        help="Family mode: keep --seed as the family seed across variants and apply micro-variation per variant.",
+    )
+    p.add_argument(
+        "--layered-micro-variation",
+        type=float,
+        default=0.0,
+        help="Family mode: subtle deterministic variation amount (0..1).",
+    )
+
+    p.add_argument(
+        "--layered-source-lock",
+        action="store_true",
+        help="Pin samplelib transient/tail source selection across variants (sources won't re-pick when body varies).",
+    )
+    p.add_argument(
+        "--layered-source-seed",
+        type=int,
+        default=None,
+        help="Optional override seed used for source lock (transient/tail). If omitted, uses the base --seed.",
+    )
 
     p.add_argument("--out", default="outputs/out.wav", help="Output WAV path.")
 
@@ -285,6 +349,15 @@ def main(argv: list[str] | None = None) -> int:
             normalize_peak_db=float(args.normalize_peak_db),
             highpass_hz=(None if float(hp) == 0.0 else float(hp)),
             lowpass_hz=(None if float(lp) == 0.0 else float(lp)),
+            # Polish mode DSP (conservative defaults)
+            denoise_strength=(0.25 if args.polish else 0.0),
+            transient_amount=(0.25 if args.polish else 0.0),
+            compressor_threshold_db=(-18.0 if args.polish else None),
+            compressor_ratio=(4.0 if args.polish else 4.0),
+            compressor_attack_ms=(5.0 if args.polish else 5.0),
+            compressor_release_ms=(90.0 if args.polish else 80.0),
+            compressor_makeup_db=(3.0 if args.polish else 0.0),
+            limiter_ceiling_db=(-1.0 if args.polish else None),
         )
 
     def _qa_info(audio: np.ndarray, sr: int) -> str:
@@ -370,13 +443,13 @@ def main(argv: list[str] | None = None) -> int:
     index_path = None if str(args.library_index).strip() == "" else Path(str(args.library_index))
 
     def _postprocess_fn_for_engine(engine: str):
-        if args.post:
+        if args.post or args.polish:
             return _pp_apply
-        if engine in {"diffusers", "synth"}:
+        if engine in {"diffusers", "synth", "layered"}:
             return _qa_only
         return None
 
-    def _gen_one(*, out_wav: Path, seed: int | None) -> GeneratedWav:
+    def _gen_one(*, out_wav: Path, seed: int | None, variant_index: int = 0, source_seed: int | None = None) -> GeneratedWav:
         # Apply hint overrides for synth controls.
         synth_attack = float(hints.attack_ms) if hints and hints.attack_ms is not None else float(args.synth_attack_ms)
         synth_release = float(hints.release_ms) if hints and hints.release_ms is not None else float(args.synth_release_ms)
@@ -418,6 +491,30 @@ def main(argv: list[str] | None = None) -> int:
             synth_lowpass_hz=synth_lp,
             synth_highpass_hz=synth_hp,
             sample_rate=44100,
+
+            layered_preset=str(args.layered_preset),
+            layered_preset_lock=True,
+            layered_variant_index=int(variant_index),
+            layered_micro_variation=float(args.layered_micro_variation),
+            layered_env_curve_shape=str(args.layered_curve),
+            layered_transient_tilt=float(args.layered_transient_tilt),
+            layered_body_tilt=float(args.layered_body_tilt),
+            layered_tail_tilt=float(args.layered_tail_tilt),
+            layered_source_lock=bool(args.layered_source_lock),
+            layered_source_seed=(int(source_seed) if source_seed is not None else None),
+            layered_transient_ms=int(args.layered_transient_ms),
+            layered_tail_ms=int(args.layered_tail_ms),
+            layered_transient_attack_ms=float(args.layered_transient_attack_ms),
+            layered_transient_hold_ms=float(args.layered_transient_hold_ms),
+            layered_transient_decay_ms=float(args.layered_transient_decay_ms),
+            layered_body_attack_ms=float(args.layered_body_attack_ms),
+            layered_body_hold_ms=float(args.layered_body_hold_ms),
+            layered_body_decay_ms=float(args.layered_body_decay_ms),
+            layered_tail_attack_ms=float(args.layered_tail_attack_ms),
+            layered_tail_hold_ms=float(args.layered_tail_hold_ms),
+            layered_tail_decay_ms=float(args.layered_tail_decay_ms),
+            layered_duck_amount=float(args.layered_duck),
+            layered_duck_release_ms=float(args.layered_duck_release_ms),
         )
 
     if args.minecraft:
@@ -429,11 +526,20 @@ def main(argv: list[str] | None = None) -> int:
             for i in range(variants):
                 suffix = f"_{i+1:02d}" if variants > 1 else ""
                 tmp_wav = Path(tmp) / f"{args.engine}{suffix}.wav"
-                seed_i = (int(base_seed) + i) if args.engine in {"diffusers", "samplelib", "synth"} else None
+                if args.engine in {"diffusers", "samplelib", "synth"}:
+                    seed_i = int(base_seed) + i
+                elif args.engine == "layered":
+                    seed_i = int(base_seed) if args.layered_family else (int(base_seed) + i)
+                else:
+                    seed_i = None
+
+                source_seed_i: int | None = None
+                if args.engine == "layered" and args.layered_source_lock:
+                    source_seed_i = int(args.layered_source_seed) if args.layered_source_seed is not None else int(base_seed)
                 # Preserve previous behavior: replicate writes to --out even when --minecraft.
                 if args.engine == "replicate":
                     tmp_wav = out_path
-                generated = _gen_one(out_wav=tmp_wav, seed=seed_i)
+                generated = _gen_one(out_wav=tmp_wav, seed=seed_i, variant_index=i, source_seed=source_seed_i)
                 if generated.post_info:
                     print(generated.post_info)
 
@@ -449,7 +555,16 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         tmp_wav = tmp_dir / "generated.wav"
-        generated = _gen_one(out_wav=tmp_wav, seed=args.seed)
+        source_seed_single: int | None = None
+        if args.engine == "layered" and args.layered_source_lock:
+            if args.layered_source_seed is not None:
+                source_seed_single = int(args.layered_source_seed)
+            elif args.seed is not None:
+                source_seed_single = int(args.seed)
+            else:
+                source_seed_single = 1337
+
+        generated = _gen_one(out_wav=tmp_wav, seed=args.seed, variant_index=0, source_seed=source_seed_single)
         if generated.post_info:
             print(generated.post_info)
 
