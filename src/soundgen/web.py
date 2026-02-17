@@ -49,6 +49,29 @@ def _generate(
     wav_subtype: str,
     mp3_bitrate: str,
     map_controls: bool,
+
+    emotion: str,
+    intensity: float,
+    variation: float,
+    pitch_contour: str,
+    multiband: bool,
+    mb_low_hz: float,
+    mb_high_hz: float,
+    mb_low_gain_db: float,
+    mb_mid_gain_db: float,
+    mb_high_gain_db: float,
+    mb_comp_threshold_db: float | None,
+    mb_comp_ratio: float,
+    creature_size: float,
+    formant_shift: float,
+    texture_preset: str,
+    texture_amount: float,
+    texture_grain_ms: float,
+    texture_spray: float,
+    reverb_preset: str,
+    reverb_mix: float,
+    reverb_time: float,
+
     export_minecraft: bool,
     mc_target: str,
     pack_root: str,
@@ -73,7 +96,71 @@ def _generate(
     out_path = Path("outputs") / f"web.{fmt}"
 
     def _pp_params() -> PostProcessParams:
-        params = PostProcessParams()
+        # Conditioning
+        inten = float(np.clip(float(intensity), 0.0, 1.0))
+        var = float(np.clip(float(variation), 0.0, 1.0))
+        emo = str(emotion or "neutral").strip().lower()
+
+        denoise = 0.0
+        trans = 0.0
+        comp_thr = None
+        comp_makeup = 0.0
+        limiter = None
+
+        if polish:
+            denoise = 0.25
+            trans = 0.25
+            comp_thr = -18.0
+            comp_makeup = 3.0
+            limiter = -1.0
+
+        if inten > 0.0:
+            trans = float(np.clip(trans + 0.35 * inten, -1.0, 1.0))
+            comp_thr = float(-18.0 - 8.0 * inten)
+            comp_makeup = float(comp_makeup + 2.0 * inten)
+            denoise = float(np.clip(denoise + 0.10 * inten, 0.0, 1.0))
+            if emo == "aggressive":
+                trans = float(np.clip(trans + 0.20, -1.0, 1.0))
+            elif emo == "calm":
+                trans = float(np.clip(trans - 0.15, -1.0, 1.0))
+            elif emo == "scared":
+                trans = float(np.clip(trans + 0.10, -1.0, 1.0))
+
+        tex_p = str(texture_preset or "off")
+        tex_a = float(texture_amount)
+        if inten > 0.0 and tex_p == "off" and tex_a <= 0.0 and emo in {"scared", "aggressive"}:
+            tex_p = "auto"
+            tex_a = float(np.clip(0.18 + 0.25 * inten + 0.10 * var, 0.0, 1.0))
+
+        rev_p = str(reverb_preset or "off")
+        rev_m = float(reverb_mix)
+        rev_t = float(reverb_time)
+        if inten > 0.0 and rev_p == "off" and rev_m <= 0.0 and emo == "calm":
+            rev_p = "room"
+            rev_m = float(np.clip(0.06 + 0.10 * inten, 0.0, 0.35))
+
+        params = PostProcessParams(
+            denoise_strength=float(denoise),
+            transient_amount=float(trans),
+            multiband=bool(multiband or (polish and inten > 0.0)),
+            multiband_low_hz=float(mb_low_hz),
+            multiband_high_hz=float(mb_high_hz),
+            multiband_low_gain_db=float(mb_low_gain_db),
+            multiband_mid_gain_db=float(mb_mid_gain_db),
+            multiband_high_gain_db=float(mb_high_gain_db),
+            multiband_comp_threshold_db=(float(mb_comp_threshold_db) if mb_comp_threshold_db is not None else (-24.0 if (polish and inten > 0.0) else None)),
+            multiband_comp_ratio=float(mb_comp_ratio),
+            formant_shift=float(formant_shift),
+            creature_size=float(creature_size),
+            texture_preset=str(tex_p),
+            texture_amount=float(tex_a),
+            texture_grain_ms=float(texture_grain_ms),
+            texture_spray=float(texture_spray),
+            reverb_preset=str(rev_p),
+            reverb_mix=float(rev_m),
+            reverb_time_s=float(rev_t),
+            prompt_hint=str(prompt),
+        )
         if hints is not None:
             # Apply only the hints we support for post-processing.
             if hints.loudness_rms_db is not None:
@@ -83,17 +170,15 @@ def _generate(
             if hints.lowpass_hz is not None:
                 params = replace(params, lowpass_hz=float(hints.lowpass_hz))
 
+        # Polish mode DSP (conservative defaults)
         if polish:
-            # Conservative defaults, mirrors CLI --polish.
             params = replace(
                 params,
-                denoise_strength=0.25,
-                transient_amount=0.25,
                 compressor_threshold_db=-18.0,
                 compressor_ratio=4.0,
                 compressor_attack_ms=5.0,
                 compressor_release_ms=90.0,
-                compressor_makeup_db=3.0,
+                compressor_makeup_db=max(float(params.compressor_makeup_db), 3.0),
                 limiter_ceiling_db=-1.0,
             )
         return params
@@ -115,6 +200,14 @@ def _generate(
 
     def _maybe_postprocess_wav(wav_path: Path) -> tuple[np.ndarray, int, str]:
         a, sr = read_wav_mono(wav_path)
+        # Tie stochastic DSP to the current variant seed.
+        if post or polish:
+            pp = _pp_params()
+            pp = replace(pp, random_seed=int(seed_i) if seed_i is not None else None)
+            a, rep = post_process_audio(a, sr, pp)
+            info = f"post: trimmed={rep.trimmed} {_qa_info(a, sr)}".strip()
+            write_wav(wav_path, a, sr)
+            return a, sr, info
         a, info = _maybe_postprocess_array(a, sr)
         if post or polish:
             write_wav(wav_path, a, sr)
@@ -165,6 +258,15 @@ def _generate(
 
     hints = map_prompt_to_controls(prompt) if map_controls else None
 
+    inten = float(np.clip(float(intensity), 0.0, 1.0))
+    var = float(np.clip(float(variation), 0.0, 1.0))
+    emo = str(emotion or "neutral").strip().lower()
+    contour = str(pitch_contour or "flat").strip().lower()
+
+    prompt2 = str(prompt)
+    if inten > 0.0 and contour != "flat":
+        prompt2 = f"{prompt2} pitch {contour}".strip()
+
     v = max(1, int(variants)) if export_minecraft else 1
     base_seed = int(seed) if seed is not None else 1337
 
@@ -194,6 +296,21 @@ def _generate(
     synth_hp = float(hints.highpass_hz) if hints and hints.highpass_hz is not None else 30.0
     synth_drive = float(hints.drive) if hints and hints.drive is not None else 0.0
 
+    if inten > 0.0:
+        synth_drive = float(np.clip(synth_drive + 0.55 * inten, 0.0, 1.0))
+        if emo == "aggressive":
+            synth_drive = float(np.clip(synth_drive + 0.20, 0.0, 1.0))
+        if emo == "calm":
+            synth_lp = float(max(2000.0, synth_lp - 3500.0 * inten))
+
+    v_pitch = 0.08 * var
+    synth_pitch_min = float(np.clip(synth_pitch_min - v_pitch, 0.60, 1.20))
+    synth_pitch_max = float(np.clip(synth_pitch_max + v_pitch, 0.80, 1.60))
+    if inten > 0.0 and contour in {"rise", "updown"}:
+        synth_pitch_max = float(np.clip(synth_pitch_max + 0.10, 0.80, 1.80))
+    if inten > 0.0 and contour in {"fall", "downup"}:
+        synth_pitch_min = float(np.clip(synth_pitch_min - 0.10, 0.50, 1.20))
+
     for i in range(v):
         suffix = f"_{i+1:02d}" if v > 1 else ""
         wav_path = Path("outputs") / f"web_{engine}{suffix}.wav"
@@ -208,7 +325,7 @@ def _generate(
 
         generated = generate_wav(
             engine,
-            prompt=prompt,
+            prompt=prompt2,
             seconds=float(seconds),
             seed=seed_i,
             out_wav=wav_path,
@@ -262,6 +379,17 @@ def _generate(
         credits = {
             "engine": str(engine),
             "prompt": str(prompt),
+            "emotion": str(emotion),
+            "intensity": float(intensity),
+            "variation": float(variation),
+            "pitch_contour": str(pitch_contour),
+            "multiband": bool(multiband),
+            "creature_size": float(creature_size),
+            "formant_shift": float(formant_shift),
+            "texture_preset": str(texture_preset),
+            "texture_amount": float(texture_amount),
+            "reverb_preset": str(reverb_preset),
+            "reverb_mix": float(reverb_mix),
             "sound_path": str(sp),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
@@ -387,6 +515,61 @@ def main() -> None:
 
         map_controls = gr.Checkbox(value=False, label="Map prompt → control hints")
 
+        with gr.Accordion("Pro controls (conditioning + DSP)", open=False):
+            gr.Markdown("### Conditioning")
+            with gr.Row():
+                emotion = gr.Dropdown(["neutral", "aggressive", "calm", "scared"], value="neutral", label="emotion")
+                intensity = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="intensity")
+                variation = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="variation")
+                pitch_contour = gr.Dropdown(["flat", "rise", "fall", "updown", "downup"], value="flat", label="pitch contour")
+
+            gr.Markdown("### Pro DSP (post)")
+            multiband = gr.Checkbox(value=False, label="multi-band cleanup")
+            with gr.Row():
+                mb_low_hz = gr.Slider(80.0, 600.0, value=250.0, step=10.0, label="mb low crossover (Hz)")
+                mb_high_hz = gr.Slider(1200.0, 8000.0, value=3000.0, step=50.0, label="mb high crossover (Hz)")
+            with gr.Row():
+                mb_low_gain_db = gr.Slider(-6.0, 6.0, value=0.0, step=0.25, label="mb low gain (dB)")
+                mb_mid_gain_db = gr.Slider(-6.0, 6.0, value=0.0, step=0.25, label="mb mid gain (dB)")
+                mb_high_gain_db = gr.Slider(-6.0, 6.0, value=0.0, step=0.25, label="mb high gain (dB)")
+            with gr.Row():
+                mb_comp_threshold_db = gr.Number(value=None, precision=1, label="mb comp threshold (dB) optional")
+                mb_comp_ratio = gr.Slider(1.0, 6.0, value=2.0, step=0.25, label="mb comp ratio")
+
+            with gr.Row():
+                creature_size = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="creature size (-1 small .. +1 large)")
+                formant_shift = gr.Slider(0.5, 2.0, value=1.0, step=0.02, label="formant shift (factor)")
+
+            texture_preset = gr.Dropdown(["off", "auto", "chitter", "rasp", "buzz", "screech"], value="off", label="texture preset")
+            with gr.Row():
+                texture_amount = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="texture amount", visible=False)
+                texture_grain_ms = gr.Slider(4.0, 80.0, value=22.0, step=1.0, label="texture grain (ms)", visible=False)
+                texture_spray = gr.Slider(0.0, 1.0, value=0.55, step=0.05, label="texture spray", visible=False)
+
+            texture_preset.change(
+                fn=lambda v: (
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                ),
+                inputs=[texture_preset],
+                outputs=[texture_amount, texture_grain_ms, texture_spray],
+            )
+
+            reverb_preset = gr.Dropdown(["off", "room", "cave", "forest", "nether"], value="off", label="reverb preset")
+            with gr.Row():
+                reverb_mix = gr.Slider(0.0, 1.0, value=0.0, step=0.02, label="reverb mix", visible=False)
+                reverb_time = gr.Slider(0.1, 6.0, value=1.2, step=0.1, label="reverb time (s)", visible=False)
+
+            reverb_preset.change(
+                fn=lambda v: (
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                ),
+                inputs=[reverb_preset],
+                outputs=[reverb_mix, reverb_time],
+            )
+
         post = gr.Checkbox(value=True, label="Post-process (trim/fade/normalize/EQ)")
         polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
 
@@ -450,6 +633,29 @@ def main() -> None:
                 wav_subtype,
                 mp3_bitrate,
                 map_controls,
+
+                emotion,
+                intensity,
+                variation,
+                pitch_contour,
+                multiband,
+                mb_low_hz,
+                mb_high_hz,
+                mb_low_gain_db,
+                mb_mid_gain_db,
+                mb_high_gain_db,
+                mb_comp_threshold_db,
+                mb_comp_ratio,
+                creature_size,
+                formant_shift,
+                texture_preset,
+                texture_amount,
+                texture_grain_ms,
+                texture_spray,
+                reverb_preset,
+                reverb_mix,
+                reverb_time,
+
                 export_minecraft,
                 mc_target,
                 pack_root,

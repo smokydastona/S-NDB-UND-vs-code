@@ -195,6 +195,85 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--highpass-hz", type=float, default=40.0, help="Highpass cutoff. Use 0 to disable.")
     p.add_argument("--lowpass-hz", type=float, default=16000.0, help="Lowpass cutoff. Use 0 to disable.")
 
+    # Pro controls (conditioning channels)
+    p.add_argument(
+        "--emotion",
+        choices=["neutral", "aggressive", "calm", "scared"],
+        default="neutral",
+        help="Optional conditioning channel: emotion (nudges DSP + engine params).",
+    )
+    p.add_argument(
+        "--intensity",
+        type=float,
+        default=0.0,
+        help="Optional conditioning channel: intensity 0..1 (0 disables conditioning).",
+    )
+    p.add_argument(
+        "--variation",
+        type=float,
+        default=0.0,
+        help="Optional conditioning channel: variation 0..1 (nudges pitch/micro-variation).",
+    )
+    p.add_argument(
+        "--pitch-contour",
+        choices=["flat", "rise", "fall", "updown", "downup"],
+        default="flat",
+        help="Optional conditioning channel: pitch contour (best-effort; strongest on synth/layered body).",
+    )
+    p.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        help="Alias for --seconds (optional conditioning channel: duration).",
+    )
+
+    # Pro DSP modules (apply via post-process across all engines)
+    p.add_argument("--multiband", action="store_true", help="Enable multi-band cleanup/dynamics stage (post).")
+    p.add_argument("--mb-low-hz", type=float, default=250.0, help="Multiband crossover low Hz (default 250).")
+    p.add_argument("--mb-high-hz", type=float, default=3000.0, help="Multiband crossover high Hz (default 3000).")
+    p.add_argument("--mb-low-gain-db", type=float, default=0.0, help="Multiband low band gain (dB).")
+    p.add_argument("--mb-mid-gain-db", type=float, default=0.0, help="Multiband mid band gain (dB).")
+    p.add_argument("--mb-high-gain-db", type=float, default=0.0, help="Multiband high band gain (dB).")
+    p.add_argument(
+        "--mb-comp-threshold-db",
+        type=float,
+        default=None,
+        help="Multiband per-band compressor threshold (dBFS). If omitted, no multiband compression.",
+    )
+    p.add_argument("--mb-comp-ratio", type=float, default=2.0, help="Multiband compressor ratio (default 2.0).")
+
+    p.add_argument(
+        "--creature-size",
+        type=float,
+        default=0.0,
+        help="Creature size control -1..+1 (formant-ish spectral warp). +1 = larger/darker.",
+    )
+    p.add_argument(
+        "--formant-shift",
+        type=float,
+        default=1.0,
+        help="Formant shift factor (0.5..2.0). 1.0 disables. Overrides --creature-size if not 1.0.",
+    )
+
+    p.add_argument(
+        "--texture-preset",
+        choices=["off", "auto", "chitter", "rasp", "buzz", "screech"],
+        default="off",
+        help="Procedural texture overlay (hybrid granular-ish). Applies in post across engines.",
+    )
+    p.add_argument("--texture-amount", type=float, default=0.0, help="Texture overlay amount (0..1).")
+    p.add_argument("--texture-grain-ms", type=float, default=22.0, help="Texture grain size (ms).")
+    p.add_argument("--texture-spray", type=float, default=0.55, help="Texture randomness/density (0..1).")
+
+    p.add_argument(
+        "--reverb",
+        choices=["off", "room", "cave", "forest", "nether"],
+        default="off",
+        help="Synthetic convolution reverb preset (post).",
+    )
+    p.add_argument("--reverb-mix", type=float, default=0.0, help="Reverb wet mix (0..1).")
+    p.add_argument("--reverb-time", type=float, default=1.2, help="Reverb tail time in seconds.")
+
     # Synth engine (DSP) controls
     p.add_argument("--synth-waveform", default="sine", help="synth waveform: sine|square|saw|triangle|noise")
     p.add_argument("--synth-freq", type=float, default=440.0, help="synth base frequency (Hz)")
@@ -331,6 +410,9 @@ def _slug_from_prompt(prompt: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    if args.duration is not None:
+        args.seconds = float(args.duration)
+
     out_path = Path(args.out)
     slug = _slug_from_prompt(args.prompt)
 
@@ -352,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
 
     hints = map_prompt_to_controls(args.prompt) if args.map_controls else None
 
-    def _pp_params() -> PostProcessParams:
+    def _pp_params(*, post_seed: int | None, prompt_hint: str | None) -> PostProcessParams:
         rms = float(args.normalize_rms_db)
         hp = float(args.highpass_hz)
         lp = float(args.lowpass_hz)
@@ -365,6 +447,49 @@ def main(argv: list[str] | None = None) -> int:
             if hints.lowpass_hz is not None:
                 lp = float(hints.lowpass_hz)
 
+        # Conditioning
+        intensity = float(np.clip(float(args.intensity), 0.0, 1.0))
+        variation = float(np.clip(float(args.variation), 0.0, 1.0))
+        emotion = str(args.emotion or "neutral").strip().lower()
+
+        # Emotion/intensity nudges for polish defaults (only if user opted in via intensity > 0)
+        denoise = (0.25 if args.polish else 0.0)
+        transient = (0.25 if args.polish else 0.0)
+        comp_thr = (-18.0 if args.polish else None)
+        comp_makeup = (3.0 if args.polish else 0.0)
+        limiter = (-1.0 if args.polish else None)
+
+        if intensity > 0.0:
+            transient = float(np.clip(transient + 0.35 * intensity, -1.0, 1.0))
+            # More intensity => slightly more compression
+            comp_thr = float(-18.0 - 8.0 * intensity)
+            comp_makeup = float(comp_makeup + 2.0 * intensity)
+            # A touch of denoise for aggressive textures
+            denoise = float(np.clip(denoise + (0.10 * intensity), 0.0, 1.0))
+
+            if emotion == "aggressive":
+                transient = float(np.clip(transient + 0.20, -1.0, 1.0))
+            elif emotion == "calm":
+                transient = float(np.clip(transient - 0.15, -1.0, 1.0))
+            elif emotion == "scared":
+                transient = float(np.clip(transient + 0.10, -1.0, 1.0))
+
+        # Texture: if user didn't set explicit texture controls, let conditioning gently enable it.
+        texture_preset = str(args.texture_preset)
+        texture_amount = float(args.texture_amount)
+        if intensity > 0.0 and (texture_preset == "off") and texture_amount <= 0.0:
+            if emotion in {"scared", "aggressive"}:
+                texture_preset = "auto"
+                texture_amount = float(np.clip(0.18 + 0.25 * intensity + 0.10 * variation, 0.0, 1.0))
+
+        # Reverb: keep off unless explicitly requested or calm emotion.
+        reverb_preset = str(args.reverb)
+        reverb_mix = float(args.reverb_mix)
+        reverb_time = float(args.reverb_time)
+        if intensity > 0.0 and reverb_preset == "off" and reverb_mix <= 0.0 and emotion == "calm":
+            reverb_preset = "room"
+            reverb_mix = float(np.clip(0.06 + 0.10 * intensity, 0.0, 0.35))
+
         return PostProcessParams(
             trim_silence=(not args.no_trim),
             silence_threshold_db=float(args.silence_threshold_db),
@@ -374,15 +499,39 @@ def main(argv: list[str] | None = None) -> int:
             normalize_peak_db=float(args.normalize_peak_db),
             highpass_hz=(None if float(hp) == 0.0 else float(hp)),
             lowpass_hz=(None if float(lp) == 0.0 else float(lp)),
-            # Polish mode DSP (conservative defaults)
-            denoise_strength=(0.25 if args.polish else 0.0),
-            transient_amount=(0.25 if args.polish else 0.0),
-            compressor_threshold_db=(-18.0 if args.polish else None),
+            # Polish mode DSP (conservative defaults + conditioning)
+            denoise_strength=float(denoise),
+            transient_amount=float(transient),
+            transient_split_hz=1200.0,
+            multiband=bool(args.multiband or (args.polish and intensity > 0.0)),
+            multiband_low_hz=float(args.mb_low_hz),
+            multiband_high_hz=float(args.mb_high_hz),
+            multiband_low_gain_db=float(args.mb_low_gain_db),
+            multiband_mid_gain_db=float(args.mb_mid_gain_db),
+            multiband_high_gain_db=float(args.mb_high_gain_db),
+            multiband_comp_threshold_db=(
+                float(args.mb_comp_threshold_db)
+                if args.mb_comp_threshold_db is not None
+                else (-24.0 if (args.polish and intensity > 0.0) else None)
+            ),
+            multiband_comp_ratio=float(args.mb_comp_ratio),
+            formant_shift=float(args.formant_shift),
+            creature_size=float(args.creature_size),
+            texture_preset=str(texture_preset),
+            texture_amount=float(texture_amount),
+            texture_grain_ms=float(args.texture_grain_ms),
+            texture_spray=float(args.texture_spray),
+            reverb_preset=str(reverb_preset),
+            reverb_mix=float(reverb_mix),
+            reverb_time_s=float(reverb_time),
+            random_seed=(int(post_seed) if post_seed is not None else None),
+            prompt_hint=(str(prompt_hint) if prompt_hint else None),
+            compressor_threshold_db=(float(comp_thr) if comp_thr is not None else None),
             compressor_ratio=(4.0 if args.polish else 4.0),
             compressor_attack_ms=(5.0 if args.polish else 5.0),
             compressor_release_ms=(90.0 if args.polish else 80.0),
-            compressor_makeup_db=(3.0 if args.polish else 0.0),
-            limiter_ceiling_db=(-1.0 if args.polish else None),
+            compressor_makeup_db=float(comp_makeup),
+            limiter_ceiling_db=(float(limiter) if limiter is not None else None),
         )
 
     def _qa_info(audio: np.ndarray, sr: int) -> str:
@@ -395,13 +544,22 @@ def main(argv: list[str] | None = None) -> int:
         flag_s = (" " + " ".join(flags)) if flags else ""
         return f"qa: peak={m.peak:.3f} rms={m.rms:.3f}{flag_s}".strip()
 
-    def _pp_apply(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
-        processed, rep = post_process_audio(audio, sr, _pp_params())
-        info = _qa_info(processed, sr)
-        return processed, f"post: trimmed={rep.trimmed} {info}".strip()
+    def _postprocess_fn_for_engine(engine: str, *, post_seed: int | None, prompt_hint: str | None):
+        if args.post or args.polish:
+            def _pp_apply(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
+                processed, rep = post_process_audio(audio, sr, _pp_params(post_seed=post_seed, prompt_hint=prompt_hint))
+                info = _qa_info(processed, sr)
+                return processed, f"post: trimmed={rep.trimmed} {info}".strip()
 
-    def _qa_only(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
-        return audio, _qa_info(audio, sr)
+            return _pp_apply
+
+        if engine in {"diffusers", "synth", "layered"}:
+            def _qa_only(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
+                return audio, _qa_info(audio, sr)
+
+            return _qa_only
+
+        return None
 
     def export_if_minecraft(wav_path: Path, *, sound_path: str) -> Path | None:
         if not args.minecraft:
@@ -438,6 +596,10 @@ def main(argv: list[str] | None = None) -> int:
         data: dict[str, object] = {
             "engine": str(args.engine),
             "prompt": str(args.prompt),
+            "emotion": str(args.emotion),
+            "intensity": float(args.intensity),
+            "variation": float(args.variation),
+            "pitch_contour": str(args.pitch_contour),
             "sound_path": str(sound_path),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
@@ -467,13 +629,6 @@ def main(argv: list[str] | None = None) -> int:
 
     index_path = None if str(args.library_index).strip() == "" else Path(str(args.library_index))
 
-    def _postprocess_fn_for_engine(engine: str):
-        if args.post or args.polish:
-            return _pp_apply
-        if engine in {"diffusers", "synth", "layered"}:
-            return _qa_only
-        return None
-
     def _gen_one(*, out_wav: Path, seed: int | None, variant_index: int = 0, source_seed: int | None = None) -> GeneratedWav:
         # Apply hint overrides for synth controls.
         synth_attack = float(hints.attack_ms) if hints and hints.attack_ms is not None else float(args.synth_attack_ms)
@@ -484,13 +639,49 @@ def main(argv: list[str] | None = None) -> int:
         synth_hp = float(hints.highpass_hz) if hints and hints.highpass_hz is not None else 30.0
         synth_drive = float(hints.drive) if hints and hints.drive is not None else float(args.synth_drive)
 
+        # Conditioning nudges across engines.
+        intensity = float(np.clip(float(args.intensity), 0.0, 1.0))
+        variation = float(np.clip(float(args.variation), 0.0, 1.0))
+        emotion = str(args.emotion or "neutral").strip().lower()
+
+        if intensity > 0.0:
+            synth_drive = float(np.clip(synth_drive + 0.55 * intensity, 0.0, 1.0))
+            if emotion == "aggressive":
+                synth_drive = float(np.clip(synth_drive + 0.20, 0.0, 1.0))
+            if emotion == "calm":
+                synth_lp = float(max(2000.0, synth_lp - 3500.0 * intensity))
+
+        # Variation widens pitch randomization for synth/samplelib and increases layered micro variation.
+        v_pitch = 0.08 * variation
+        synth_pitch_min = float(np.clip(synth_pitch_min - v_pitch, 0.60, 1.20))
+        synth_pitch_max = float(np.clip(synth_pitch_max + v_pitch, 0.80, 1.60))
+
+        # Pitch contour (best-effort): we encode it into the prompt so AI engines can respond,
+        # and we also nudge synth pitch range.
+        contour = str(args.pitch_contour or "flat").strip().lower()
+        prompt2 = str(args.prompt)
+        if intensity > 0.0 and contour != "flat":
+            prompt2 = f"{prompt2} pitch {contour}".strip()
+            if contour in {"rise", "updown"}:
+                synth_pitch_max = float(np.clip(synth_pitch_max + 0.10, 0.80, 1.80))
+            if contour in {"fall", "downup"}:
+                synth_pitch_min = float(np.clip(synth_pitch_min - 0.10, 0.50, 1.20))
+
+        layered_micro = float(args.layered_micro_variation)
+        if variation > 0.0:
+            layered_micro = float(np.clip(layered_micro + 0.60 * variation, 0.0, 1.0))
+
         return generate_wav(
             args.engine,
-            prompt=args.prompt,
+            prompt=prompt2,
             seconds=float(args.seconds),
             seed=seed,
             out_wav=out_wav,
-            postprocess_fn=_postprocess_fn_for_engine(args.engine),
+            postprocess_fn=_postprocess_fn_for_engine(
+                args.engine,
+                post_seed=(int(seed) if seed is not None else None),
+                prompt_hint=prompt2,
+            ),
             device=str(args.device),
             model=str(args.model),
             preset=args.preset,
@@ -499,8 +690,8 @@ def main(argv: list[str] | None = None) -> int:
             replicate_token=args.replicate_token,
             replicate_input_json=args.replicate_input_json,
             library_zips=tuple(Path(p) for p in zip_args),
-            library_pitch_min=float(args.library_pitch_min),
-            library_pitch_max=float(args.library_pitch_max),
+            library_pitch_min=float(np.clip(float(args.library_pitch_min) - 0.10 * variation, 0.50, 1.20)),
+            library_pitch_max=float(np.clip(float(args.library_pitch_max) + 0.10 * variation, 0.80, 2.00)),
             library_mix_count=int(args.library_mix_count),
             library_index_path=index_path,
             synth_waveform=str(args.synth_waveform),
@@ -520,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
             layered_preset=str(args.layered_preset),
             layered_preset_lock=True,
             layered_variant_index=int(variant_index),
-            layered_micro_variation=float(args.layered_micro_variation),
+            layered_micro_variation=float(layered_micro),
             layered_env_curve_shape=str(args.layered_curve),
             layered_transient_tilt=float(args.layered_transient_tilt),
             layered_body_tilt=float(args.layered_body_tilt),

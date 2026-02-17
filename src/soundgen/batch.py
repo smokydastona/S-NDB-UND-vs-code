@@ -5,6 +5,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+import numpy as np
+
 from .engine_registry import generate_wav
 from .library import append_record, make_record
 from .manifest import ManifestItem, load_manifest
@@ -19,9 +21,74 @@ def _default_sound_path(namespace: str, event: str) -> str:
     return f"generated/{safe.replace('.', '/')}"
 
 
-def _pp_params() -> PostProcessParams:
-    # Reasonable defaults for Minecraft.
-    return PostProcessParams()
+def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: str | None) -> PostProcessParams:
+    # Reasonable defaults for Minecraft, plus optional "pro" DSP controls.
+    intensity = float(np.clip(float(getattr(args, "intensity", 0.0)), 0.0, 1.0))
+    variation = float(np.clip(float(getattr(args, "variation", 0.0)), 0.0, 1.0))
+    emotion = str(getattr(args, "emotion", "neutral") or "neutral").strip().lower()
+
+    denoise = (0.25 if bool(getattr(args, "polish", False)) else 0.0)
+    transient = (0.25 if bool(getattr(args, "polish", False)) else 0.0)
+    comp_thr = (-18.0 if bool(getattr(args, "polish", False)) else None)
+    comp_makeup = (3.0 if bool(getattr(args, "polish", False)) else 0.0)
+    limiter = (-1.0 if bool(getattr(args, "polish", False)) else None)
+
+    if intensity > 0.0:
+        transient = float(np.clip(transient + 0.35 * intensity, -1.0, 1.0))
+        comp_thr = float(-18.0 - 8.0 * intensity)
+        comp_makeup = float(comp_makeup + 2.0 * intensity)
+        denoise = float(np.clip(denoise + (0.10 * intensity), 0.0, 1.0))
+        if emotion == "aggressive":
+            transient = float(np.clip(transient + 0.20, -1.0, 1.0))
+        elif emotion == "calm":
+            transient = float(np.clip(transient - 0.15, -1.0, 1.0))
+        elif emotion == "scared":
+            transient = float(np.clip(transient + 0.10, -1.0, 1.0))
+
+    texture_preset = str(getattr(args, "texture_preset", "off") or "off")
+    texture_amount = float(getattr(args, "texture_amount", 0.0) or 0.0)
+    if intensity > 0.0 and (texture_preset == "off") and texture_amount <= 0.0:
+        if emotion in {"scared", "aggressive"}:
+            texture_preset = "auto"
+            texture_amount = float(np.clip(0.18 + 0.25 * intensity + 0.10 * variation, 0.0, 1.0))
+
+    reverb_preset = str(getattr(args, "reverb", "off") or "off")
+    reverb_mix = float(getattr(args, "reverb_mix", 0.0) or 0.0)
+    reverb_time = float(getattr(args, "reverb_time", 1.0) or 1.0)
+    if intensity > 0.0 and reverb_preset == "off" and reverb_mix <= 0.0 and emotion == "calm":
+        reverb_preset = "room"
+        reverb_mix = float(np.clip(0.06 + 0.10 * intensity, 0.0, 0.35))
+
+    mb_thr = getattr(args, "mb_comp_threshold_db", None)
+    mb_thr_f = float(mb_thr) if mb_thr is not None else (-24.0 if (bool(getattr(args, "polish", False)) and intensity > 0.0) else None)
+
+    return PostProcessParams(
+        denoise_strength=float(denoise),
+        transient_amount=float(transient),
+        transient_split_hz=1200.0,
+        multiband=bool(getattr(args, "multiband", False) or (bool(getattr(args, "polish", False)) and intensity > 0.0)),
+        multiband_low_hz=float(getattr(args, "mb_low_hz", 180.0)),
+        multiband_high_hz=float(getattr(args, "mb_high_hz", 3800.0)),
+        multiband_low_gain_db=float(getattr(args, "mb_low_gain_db", 0.0)),
+        multiband_mid_gain_db=float(getattr(args, "mb_mid_gain_db", 0.0)),
+        multiband_high_gain_db=float(getattr(args, "mb_high_gain_db", 0.0)),
+        multiband_comp_threshold_db=mb_thr_f,
+        multiband_comp_ratio=float(getattr(args, "mb_comp_ratio", 2.0)),
+        formant_shift=float(getattr(args, "formant_shift", 0.0)),
+        creature_size=float(getattr(args, "creature_size", 0.0)),
+        texture_preset=str(texture_preset),
+        texture_amount=float(texture_amount),
+        texture_grain_ms=float(getattr(args, "texture_grain_ms", 28.0)),
+        texture_spray=float(getattr(args, "texture_spray", 0.35)),
+        reverb_preset=str(reverb_preset),
+        reverb_mix=float(reverb_mix),
+        reverb_time_s=float(reverb_time),
+        random_seed=(int(post_seed) if post_seed is not None else None),
+        prompt_hint=(str(prompt_hint) if prompt_hint else None),
+        compressor_threshold_db=(float(comp_thr) if comp_thr is not None else None),
+        compressor_makeup_db=float(comp_makeup),
+        limiter_ceiling_db=(float(limiter) if limiter is not None else None),
+    )
 
 
 def _maybe_postprocess_wav(wav_path: Path, *, enabled: bool) -> None:
@@ -50,6 +117,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--device", choices=["cpu", "cuda"], default="cpu", help="Diffusers device")
     p.add_argument("--model", default="cvssp/audioldm2", help="Diffusers model id")
     p.add_argument("--rfxgen-path", default=None, help="Optional path to rfxgen.exe")
+
+    # Post + pro controls (applies to all items where manifest sets post=true)
+    p.add_argument("--polish", action="store_true", help="Enable conservative denoise/transient/compress/limit defaults")
+    p.add_argument("--emotion", choices=["neutral", "aggressive", "calm", "scared"], default="neutral")
+    p.add_argument("--intensity", type=float, default=0.0, help="0..1")
+    p.add_argument("--variation", type=float, default=0.0, help="0..1")
+    p.add_argument("--pitch-contour", choices=["flat", "rise", "fall", "updown", "downup"], default="flat")
+
+    p.add_argument("--multiband", action="store_true")
+    p.add_argument("--mb-low-hz", type=float, default=180.0)
+    p.add_argument("--mb-high-hz", type=float, default=3800.0)
+    p.add_argument("--mb-low-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-mid-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-high-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-comp-threshold-db", type=float, default=None)
+    p.add_argument("--mb-comp-ratio", type=float, default=2.0)
+
+    p.add_argument("--creature-size", type=float, default=0.0, help="-1..+1")
+    p.add_argument("--formant-shift", type=float, default=0.0)
+
+    p.add_argument("--texture-preset", choices=["off", "auto", "chitter", "rasp", "buzz", "screech"], default="off")
+    p.add_argument("--texture-amount", type=float, default=0.0)
+    p.add_argument("--texture-grain-ms", type=float, default=28.0)
+    p.add_argument("--texture-spray", type=float, default=0.35)
+
+    p.add_argument("--reverb", choices=["off", "room", "cave", "forest", "nether"], default="off")
+    p.add_argument("--reverb-mix", type=float, default=0.0)
+    p.add_argument("--reverb-time", type=float, default=1.0)
 
     # Sample library engine
     p.add_argument(
@@ -95,20 +190,31 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
 
             tmp_wav = tmp_dir / f"{namespace}_{event.replace('.', '_')}{suffix}.wav"
 
+            seed_i = (int(item.seed) + i) if item.seed is not None else None
+
             if item.engine == "samplelib" and not zip_args:
                 raise FileNotFoundError(
                     "engine=samplelib but no --library-zip provided and no default zips found at .examples/sound libraies/*.zip"
                 )
 
+            pitch_contour = str(getattr(args, "pitch_contour", "flat") or "flat")
+            effective_prompt = item.prompt
+            if pitch_contour != "flat":
+                effective_prompt = f"{effective_prompt}, pitch contour {pitch_contour}"
+
             def _pp(audio, sr):
-                processed, _ = post_process_audio(audio, sr, _pp_params())
+                processed, _ = post_process_audio(
+                    audio,
+                    sr,
+                    _pp_params(args=args, post_seed=seed_i, prompt_hint=effective_prompt),
+                )
                 return processed, "post"
 
             generated = generate_wav(
                 item.engine,
-                prompt=item.prompt,
+                prompt=effective_prompt,
                 seconds=float(item.seconds),
-                seed=(int(item.seed) + i) if item.seed is not None else None,
+                seed=seed_i,
                 out_wav=tmp_wav,
                 postprocess_fn=(_pp if item.post else None),
                 device=str(args.device),
@@ -144,7 +250,14 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
             out_files.append(ogg_path)
 
             # Pack credits for all engines.
-            credits: dict = {"engine": item.engine, "prompt": item.prompt}
+            credits: dict = {
+                "engine": item.engine,
+                "prompt": item.prompt,
+                "emotion": str(getattr(args, "emotion", "neutral") or "neutral"),
+                "intensity": float(getattr(args, "intensity", 0.0) or 0.0),
+                "variation": float(getattr(args, "variation", 0.0) or 0.0),
+                "pitch_contour": pitch_contour,
+            }
             credits.update({k: v for k, v in generated.credits_extra.items() if v is not None})
             if sources:
                 credits["sources"] = list(sources)

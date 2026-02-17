@@ -46,6 +46,35 @@ In addition to basic `--post` (trim/fade/normalize/EQ), you can enable a conserv
 python -m soundgen.generate --engine layered --polish --prompt "melee hit" --seconds 1.0 --out outputs\hit_polished.wav
 ```
 
+### Pro controls (conditioning + DSP)
+
+These controls are applied in the post-processing stage, so they work with any engine when `--post` or `--polish` is enabled.
+
+**Conditioning channels**
+
+- `--emotion {neutral,aggressive,calm,scared}`
+- `--intensity <0..1>` (nudges polish defaults + can auto-enable texture/reverb)
+- `--variation <0..1>` (widens some engine randomization + affects auto texture)
+- `--pitch-contour {flat,rise,fall,updown,downup}`
+- `--duration` (alias for `--seconds`)
+
+**DSP modules**
+
+- Multi-band clarity: `--multiband` (plus `--mb-*-*` crossover/gain/compression options)
+- “Creature size” / formant color: `--creature-size < -1..+1 >` and `--formant-shift` (subtle; best with voice-like material)
+- Procedural texture overlay: `--texture-preset {off,auto,chitter,rasp,buzz,screech}` + `--texture-amount`
+- Synthetic convolution reverb: `--reverb {off,room,cave,forest,nether}` + `--reverb-mix` + `--reverb-time`
+
+Examples:
+
+```powershell
+# A “monster-ish” layered creature with added texture + space
+python -m soundgen.generate --engine layered --layered-preset creature --prompt "slimy monster hiss" --seconds 1.6 --seed 42 --post --emotion aggressive --intensity 0.8 --variation 0.7 --pitch-contour updown --multiband --creature-size -0.4 --texture-preset auto --texture-amount 0.30 --reverb cave --reverb-mix 0.14 --reverb-time 1.1 --out outputs\creature.wav
+
+# A small UI-ish synth with multiband + a touch of room
+python -m soundgen.generate --engine synth --prompt "ui click" --seconds 0.35 --seed 7 --post --emotion calm --intensity 0.35 --multiband --reverb room --reverb-mix 0.08 --reverb-time 0.7 --out outputs\ui_click.wav
+```
+
 ### Export format options (non-Minecraft)
 
 By default, `--out` writes a 16-bit PCM WAV. You can change WAV encoding or export other formats:
@@ -237,6 +266,67 @@ Layered controls: CLI ↔ Gradio mapping (quick reference)
 | Spectral tilt | `--layered-transient-tilt`, `--layered-body-tilt`, `--layered-tail-tilt` | “layered transient/body/tail tilt” (sliders) |
 | Granular texture | `--layered-granular-preset`, `--layered-granular-amount`, `--layered-granular-grain-ms`, `--layered-granular-spray` | “layered granular preset/amount/grain/spray” (dropdown + sliders) |
 | Polish mode | `--polish` | “Polish mode (denoise/transients/compress/limit)” (checkbox) |
+
+### Full-feature layered showcase (one-stop)
+
+This section is a single copy/paste reference that exercises the full layered stack:
+
+- deterministic **families** (`--seed` + `--variants` + `--layered-family`)
+- pinned sample sources across variants (**source lock**) (`--layered-source-lock`)
+- per-variant subtle changes (**micro-variation**) (`--layered-micro-variation`)
+- “studio” finish (**polish**) (`--polish`)
+- hybrid body texture (**layered granular preset**) (`--layered-granular-*`)
+- extra finish (**pro DSP modules**) (`--multiband`, `--texture-*`, `--reverb`, `--creature-size`)
+
+Visual mental model (what changes per variant vs what stays pinned):
+
+```mermaid
+flowchart LR
+	A[Base seed --seed] --> B[Family mode --layered-family]
+	B --> C[Variant index 0..N-1]
+
+	A --> D{Source lock?}
+	D -- yes --> E[Pick transient/tail samples once]
+	D -- no --> F[Re-pick samples per variant]
+
+	C --> G[Body micro-variation]
+	G --> H[Synth body params]
+
+	E --> I[Transient sample]
+	E --> J[Tail sample]
+	F --> I
+	F --> J
+
+	I --> K[Mix layers]
+	H --> K
+	J --> K
+	K --> L[Post chain: --post/--polish + pro DSP]
+```
+
+**One command to generate a whole family into a fresh pack**
+
+This writes multiple `.ogg` variants under a single event id, with transient/tail pinned across variants and the body subtly changing.
+
+```powershell
+python -m soundgen.generate --engine layered --minecraft --pack-root outputs\showcase_pack --namespace mymod --event sfx.showcase.layered --subtitle "Layered Showcase" --variants 6 --seed 123 --layered-family --layered-source-lock --layered-micro-variation 0.40 --layered-preset creature --layered-curve exponential --layered-duck 0.55 --layered-transient-tilt 0.25 --layered-body-tilt -0.10 --layered-tail-tilt 0.45 --layered-granular-preset auto --layered-granular-amount 0.35 --layered-granular-grain-ms 26 --layered-granular-spray 0.55 --polish --post --emotion aggressive --intensity 0.80 --variation 0.65 --pitch-contour updown --multiband --creature-size -0.35 --texture-preset auto --texture-amount 0.22 --reverb cave --reverb-mix 0.12 --reverb-time 1.1 --prompt "slimy monster hiss"
+```
+
+In-game:
+
+```mcfunction
+/playsound mymod:sfx.showcase.layered master @s
+```
+
+**Granular preset quick audition (WAVs, not Minecraft)**
+
+These write local WAVs so you can audition the granular body texture flavors quickly:
+
+```powershell
+python -m soundgen.generate --engine layered --seconds 1.4 --seed 210 --prompt "insect chitter" --layered-granular-preset chitter --layered-granular-amount 0.40 --layered-granular-spray 0.60 --layered-granular-grain-ms 18 --polish --post --out outputs\showcase\layered_granular_chitter.wav
+python -m soundgen.generate --engine layered --seconds 1.4 --seed 211 --prompt "creature rasp"   --layered-granular-preset rasp    --layered-granular-amount 0.30 --layered-granular-spray 0.35 --layered-granular-grain-ms 35 --polish --post --out outputs\showcase\layered_granular_rasp.wav
+python -m soundgen.generate --engine layered --seconds 1.4 --seed 212 --prompt "wasp buzz"       --layered-granular-preset buzz    --layered-granular-amount 0.35 --layered-granular-spray 0.75 --layered-granular-grain-ms 10 --polish --post --out outputs\showcase\layered_granular_buzz.wav
+python -m soundgen.generate --engine layered --seconds 1.4 --seed 213 --prompt "screechy scrape" --layered-granular-preset screech --layered-granular-amount 0.25 --layered-granular-spray 0.25 --layered-granular-grain-ms 70 --polish --post --out outputs\showcase\layered_granular_screech.wav
+```
 
 ## Minecraft resource pack output (.ogg)
 

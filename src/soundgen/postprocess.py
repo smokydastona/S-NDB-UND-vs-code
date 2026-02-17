@@ -24,6 +24,44 @@ class PostProcessParams:
     # "Polish Mode" DSP (off by default)
     denoise_strength: float = 0.0  # 0..1 (gentle spectral subtraction)
     transient_amount: float = 0.0  # -1..+1 (high-band transient emphasis)
+    transient_split_hz: float = 1200.0
+
+    # Multi-band cleanup / dynamics (off by default)
+    multiband: bool = False
+    multiband_low_hz: float = 250.0
+    multiband_high_hz: float = 3000.0
+    multiband_low_gain_db: float = 0.0
+    multiband_mid_gain_db: float = 0.0
+    multiband_high_gain_db: float = 0.0
+    multiband_comp_threshold_db: Optional[float] = None
+    multiband_comp_ratio: float = 2.0
+    multiband_comp_attack_ms: float = 4.0
+    multiband_comp_release_ms: float = 120.0
+    multiband_comp_makeup_db: float = 0.0
+
+    # Formant-ish spectral warp (1.0 = none). Use creature_size as a friendlier knob.
+    formant_shift: float = 1.0
+    creature_size: float = 0.0  # -1 small/bright .. +1 large/dark
+
+    # Procedural texture overlay (hybrid granular-ish layer)
+    texture_preset: str = "off"  # off|auto|chitter|rasp|buzz|screech
+    texture_amount: float = 0.0  # 0..1
+    texture_grain_ms: float = 22.0
+    texture_spray: float = 0.55
+
+    # Synthetic convolution reverb (off by default)
+    reverb_preset: str = "off"  # off|room|cave|forest|nether
+    reverb_mix: float = 0.0  # 0..1
+    reverb_time_s: float = 1.2
+
+    # Determinism for stochastic DSP (texture/reverb). If None, effects are still deterministic
+    # per run but not tied to engine seeds.
+    random_seed: Optional[int] = None
+
+    # Optional prompt hint for auto-selecting texture preset. Stored here because post_process_audio
+    # operates on audio-only.
+    prompt_hint: Optional[str] = None
+
     compressor_threshold_db: Optional[float] = None  # e.g. -18
     compressor_ratio: float = 4.0
     compressor_attack_ms: float = 5.0
@@ -47,6 +85,10 @@ class PostProcessReport:
 
 def _db_to_amp(db: float) -> float:
     return float(10.0 ** (db / 20.0))
+
+
+def _clamp01(x: float) -> float:
+    return float(np.clip(float(x), 0.0, 1.0))
 
 
 def _rms(x: np.ndarray) -> float:
@@ -129,15 +171,16 @@ def _soft_limit(x: np.ndarray, *, ceiling_amp: float) -> np.ndarray:
     return y.astype(np.float32, copy=False)
 
 
-def _transient_shaper(x: np.ndarray, sr: int, *, amount: float) -> np.ndarray:
+def _transient_shaper(x: np.ndarray, sr: int, *, amount: float, split_hz: float = 1200.0) -> np.ndarray:
     """Simple transient shaping by boosting/cutting the high band."""
 
     a = float(np.clip(amount, -1.0, 1.0))
     if x.size == 0 or abs(a) < 1e-6:
         return x.astype(np.float32, copy=False)
 
-    # Split at ~1.2kHz. High band tends to carry attack/click.
-    low = _butter_filter(x, sr, kind="lowpass", cutoff_hz=1200.0, order=2)
+    # Split at ~1.2kHz by default. High band tends to carry attack/click.
+    split = float(np.clip(float(split_hz), 150.0, 0.45 * float(sr)))
+    low = _butter_filter(x, sr, kind="lowpass", cutoff_hz=split, order=2)
     high = (x - low).astype(np.float32, copy=False)
 
     if a > 0:
@@ -146,6 +189,287 @@ def _transient_shaper(x: np.ndarray, sr: int, *, amount: float) -> np.ndarray:
         g = 1.0 / (1.0 + 1.8 * (-a))
 
     y = (low + (high * float(g))).astype(np.float32, copy=False)
+    return y
+
+
+def _multiband_split(
+    x: np.ndarray,
+    sr: int,
+    *,
+    low_hz: float,
+    high_hz: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Split into (low, mid, high) using zero-phase Butterworth filters.
+
+    Recombining low+mid+high approximately reconstructs x.
+    """
+
+    if x.size == 0:
+        z = x.astype(np.float32, copy=False)
+        return z, z, z
+
+    lo = float(np.clip(float(low_hz), 40.0, 0.35 * float(sr)))
+    hi = float(np.clip(float(high_hz), lo * 1.2, 0.45 * float(sr)))
+
+    low = _butter_filter(x, sr, kind="lowpass", cutoff_hz=lo, order=4)
+    high = _butter_filter(x, sr, kind="highpass", cutoff_hz=hi, order=4)
+    mid = (x - low - high).astype(np.float32, copy=False)
+    return low, mid, high
+
+
+def _apply_multiband(x: np.ndarray, sr: int, params: PostProcessParams) -> np.ndarray:
+    if not bool(params.multiband) or x.size == 0:
+        return x.astype(np.float32, copy=False)
+
+    low, mid, high = _multiband_split(x, sr, low_hz=float(params.multiband_low_hz), high_hz=float(params.multiband_high_hz))
+
+    gl = _db_to_amp(float(params.multiband_low_gain_db))
+    gm = _db_to_amp(float(params.multiband_mid_gain_db))
+    gh = _db_to_amp(float(params.multiband_high_gain_db))
+
+    low = (low * gl).astype(np.float32, copy=False)
+    mid = (mid * gm).astype(np.float32, copy=False)
+    high = (high * gh).astype(np.float32, copy=False)
+
+    if params.multiband_comp_threshold_db is not None:
+        thr = float(params.multiband_comp_threshold_db)
+        ratio = float(params.multiband_comp_ratio)
+        atk = float(params.multiband_comp_attack_ms)
+        rel = float(params.multiband_comp_release_ms)
+        makeup = float(params.multiband_comp_makeup_db)
+        low = _compressor(low, sr, threshold_db=thr, ratio=ratio, attack_ms=atk, release_ms=rel, makeup_db=makeup)
+        mid = _compressor(mid, sr, threshold_db=thr, ratio=ratio, attack_ms=atk, release_ms=rel, makeup_db=makeup)
+        high = _compressor(high, sr, threshold_db=thr, ratio=ratio, attack_ms=atk, release_ms=rel, makeup_db=makeup)
+
+    y = (low + mid + high).astype(np.float32, copy=False)
+    return y
+
+
+def _effective_formant_shift(params: PostProcessParams) -> float:
+    f = float(params.formant_shift)
+    if abs(f - 1.0) > 1e-6:
+        return float(np.clip(f, 0.5, 2.0))
+    size = float(np.clip(float(params.creature_size), -1.0, 1.0))
+    if abs(size) < 1e-6:
+        return 1.0
+    # Positive size => larger creature => lower formants (shift down)
+    factor = float(2.0 ** (-0.35 * size))  # ~0.78..1.28
+    return float(np.clip(factor, 0.5, 2.0))
+
+
+def _formant_warp_stft(x: np.ndarray, sr: int, *, factor: float) -> np.ndarray:
+    """Approximate formant shift by warping the STFT spectrum along frequency.
+
+    Note: This is an approximation; it can subtly affect perceived pitch.
+    """
+
+    if x.size == 0:
+        return x.astype(np.float32, copy=False)
+    f = float(np.clip(float(factor), 0.5, 2.0))
+    if abs(f - 1.0) < 1e-6:
+        return x.astype(np.float32, copy=False)
+
+    nper = 2048
+    nover = 1536
+    if x.size < nper:
+        return x.astype(np.float32, copy=False)
+
+    freqs, times, Z = signal.stft(x.astype(np.float32, copy=False), fs=sr, nperseg=nper, noverlap=nover, window="hann")
+    # Warp in frequency domain: target bin i samples from source frequency / factor.
+    src_freqs = freqs
+    tgt_freqs = freqs
+    sample_freqs = tgt_freqs / f
+
+    real = np.empty_like(Z.real, dtype=np.float32)
+    imag = np.empty_like(Z.imag, dtype=np.float32)
+
+    # Vectorized per-frame interpolation
+    for ti in range(Z.shape[1]):
+        zr = Z.real[:, ti]
+        zi = Z.imag[:, ti]
+        real[:, ti] = np.interp(sample_freqs, src_freqs, zr, left=0.0, right=0.0).astype(np.float32, copy=False)
+        imag[:, ti] = np.interp(sample_freqs, src_freqs, zi, left=0.0, right=0.0).astype(np.float32, copy=False)
+
+    Z2 = real.astype(np.float32, copy=False) + 1j * imag.astype(np.float32, copy=False)
+    _, y = signal.istft(Z2, fs=sr, nperseg=nper, noverlap=nover, window="hann")
+    y = y[: x.size]
+    return y.astype(np.float32, copy=False)
+
+
+def _auto_texture_preset(prompt_hint: str | None) -> str:
+    p = (prompt_hint or "").lower()
+    if any(k in p for k in ("buzz", "wasp", "bee", "fly", "insect", "mosquito")):
+        return "buzz"
+    if any(k in p for k in ("screech", "shriek", "scream", "metal", "scrape")):
+        return "screech"
+    if any(k in p for k in ("rasp", "undead", "zombie", "grit", "gravel")):
+        return "rasp"
+    if any(k in p for k in ("chitter", "click", "skitter")):
+        return "chitter"
+    return "off"
+
+
+def _synthesize_texture(
+    n: int,
+    sr: int,
+    *,
+    preset: str,
+    grain_ms: float,
+    spray: float,
+    seed: int,
+) -> np.ndarray:
+    """Procedural granular-ish texture: windowed noise grains + band shaping."""
+
+    if n <= 0:
+        return np.zeros((0,), dtype=np.float32)
+
+    rng = np.random.default_rng(int(seed) & 0xFFFFFFFF)
+    g_ms = float(np.clip(float(grain_ms), 4.0, 80.0))
+    grain = max(16, int(round(float(sr) * (g_ms / 1000.0))))
+    grain = min(grain, max(16, n))
+
+    # Density from spray
+    dens = 0.15 + 1.25 * _clamp01(float(spray))
+    hop = max(1, int(round(grain / (2.0 * dens))))
+
+    win = np.hanning(grain).astype(np.float32)
+    out = np.zeros((n,), dtype=np.float32)
+
+    for start in range(0, n, hop):
+        if rng.random() > (0.55 + 0.45 * _clamp01(float(spray))):
+            continue
+        end = min(n, start + grain)
+        g = end - start
+        noise = rng.standard_normal(g).astype(np.float32)
+        w = win[:g]
+        amp = float(0.35 + 0.65 * rng.random())
+        out[start:end] += amp * noise * w
+
+    # Band shaping per preset
+    preset_l = (preset or "off").strip().lower()
+    if preset_l == "chitter":
+        out = _butter_filter(out, sr, kind="highpass", cutoff_hz=1600.0, order=2)
+        out = _butter_filter(out, sr, kind="lowpass", cutoff_hz=9000.0, order=2)
+    elif preset_l == "rasp":
+        out = _butter_filter(out, sr, kind="highpass", cutoff_hz=350.0, order=2)
+        out = _butter_filter(out, sr, kind="lowpass", cutoff_hz=4200.0, order=2)
+    elif preset_l == "buzz":
+        out = _butter_filter(out, sr, kind="highpass", cutoff_hz=500.0, order=2)
+        out = _butter_filter(out, sr, kind="lowpass", cutoff_hz=2200.0, order=2)
+    elif preset_l == "screech":
+        out = _butter_filter(out, sr, kind="highpass", cutoff_hz=2200.0, order=2)
+        out = _butter_filter(out, sr, kind="lowpass", cutoff_hz=14000.0, order=2)
+    else:
+        # off or unknown
+        return np.zeros((n,), dtype=np.float32)
+
+    # Soft clip and normalize lightly
+    peak = float(np.max(np.abs(out))) if out.size else 0.0
+    if peak > 1e-6:
+        out = (out / peak).astype(np.float32, copy=False)
+    out = np.tanh(1.8 * out).astype(np.float32, copy=False)
+    return out.astype(np.float32, copy=False)
+
+
+def _apply_texture_overlay(x: np.ndarray, sr: int, params: PostProcessParams, *, prompt_hint: str | None = None) -> np.ndarray:
+    amt = float(np.clip(float(params.texture_amount), 0.0, 1.0))
+    if x.size == 0 or amt <= 1e-6:
+        return x.astype(np.float32, copy=False)
+
+    preset = (params.texture_preset or "off").strip().lower()
+    if preset == "auto":
+        preset = _auto_texture_preset(prompt_hint)
+    if preset in {"off", "none", "0"}:
+        return x.astype(np.float32, copy=False)
+
+    seed = int(params.random_seed) if params.random_seed is not None else 0
+    tex = _synthesize_texture(
+        int(x.size),
+        int(sr),
+        preset=str(preset),
+        grain_ms=float(params.texture_grain_ms),
+        spray=float(params.texture_spray),
+        seed=seed ^ 0xA53C_19D1,
+    )
+
+    # Mix in; keep conservative energy.
+    y = (x + (amt * 0.35) * tex).astype(np.float32, copy=False)
+    return y
+
+
+def _synthetic_ir(
+    sr: int,
+    *,
+    preset: str,
+    time_s: float,
+    seed: int,
+) -> np.ndarray:
+    t = float(np.clip(float(time_s), 0.1, 6.0))
+    n = max(1, int(round(float(sr) * t)))
+    rng = np.random.default_rng(int(seed) & 0xFFFFFFFF)
+
+    p = (preset or "room").strip().lower()
+    if p == "room":
+        early_ms = 60.0
+        tail_lp = 9000.0
+        decay = 1.6
+    elif p == "cave":
+        early_ms = 110.0
+        tail_lp = 6000.0
+        decay = 2.4
+    elif p == "forest":
+        early_ms = 75.0
+        tail_lp = 5000.0
+        decay = 1.8
+    elif p == "nether":
+        early_ms = 90.0
+        tail_lp = 4200.0
+        decay = 2.1
+    else:
+        early_ms = 60.0
+        tail_lp = 9000.0
+        decay = 1.6
+
+    ir = np.zeros((n,), dtype=np.float32)
+    # Direct path
+    ir[0] = 1.0
+
+    # Early reflections
+    early_n = int(round(float(sr) * (early_ms / 1000.0)))
+    k = max(8, min(40, int(6 + 18 * t)))
+    for _ in range(k):
+        idx = int(rng.integers(1, max(2, early_n)))
+        amp = float((0.25 + 0.75 * rng.random()) * np.exp(-3.0 * (idx / max(1, early_n))))
+        ir[idx] += amp * float(rng.choice([1.0, -1.0]))
+
+    # Late tail: exponentially decaying filtered noise
+    noise = rng.standard_normal(n).astype(np.float32)
+    env = np.exp(-np.linspace(0.0, decay, n, dtype=np.float32))
+    tail = (noise * env).astype(np.float32, copy=False)
+    tail = _butter_filter(tail, sr, kind="lowpass", cutoff_hz=float(tail_lp), order=2)
+    ir = (ir + 0.22 * tail).astype(np.float32, copy=False)
+
+    # Normalize IR energy
+    peak = float(np.max(np.abs(ir))) if ir.size else 0.0
+    if peak > 1e-6:
+        ir = (ir / peak).astype(np.float32, copy=False)
+    return ir.astype(np.float32, copy=False)
+
+
+def _apply_reverb(x: np.ndarray, sr: int, params: PostProcessParams) -> np.ndarray:
+    mix = float(np.clip(float(params.reverb_mix), 0.0, 1.0))
+    preset = (params.reverb_preset or "off").strip().lower()
+    if x.size == 0 or mix <= 1e-6 or preset in {"off", "none", "0"}:
+        return x.astype(np.float32, copy=False)
+
+    seed = int(params.random_seed) if params.random_seed is not None else 0
+    ir = _synthetic_ir(int(sr), preset=str(preset), time_s=float(params.reverb_time_s), seed=seed ^ 0x6C2B_1E55)
+    wet = signal.fftconvolve(x.astype(np.float32, copy=False), ir.astype(np.float32, copy=False), mode="full")
+    wet = wet[: x.size].astype(np.float32, copy=False)
+
+    # Damping to keep Minecraft-ish tails under control.
+    wet = _butter_filter(wet, sr, kind="lowpass", cutoff_hz=12000.0, order=2)
+    y = ((1.0 - mix) * x + mix * wet).astype(np.float32, copy=False)
     return y
 
 
@@ -275,9 +599,20 @@ def post_process_audio(x: np.ndarray, sr: int, params: PostProcessParams) -> tup
     if params.lowpass_hz is not None:
         y = _butter_filter(y, sr, kind="lowpass", cutoff_hz=float(params.lowpass_hz))
 
+    # Optional multi-band cleanup
+    y = _apply_multiband(y, sr, params)
+
+    # Optional formant-ish spectral warp
+    ff = _effective_formant_shift(params)
+    if abs(ff - 1.0) > 1e-6:
+        y = _formant_warp_stft(y, sr, factor=ff)
+
+    # Optional texture overlay (hybrid granular-ish)
+    y = _apply_texture_overlay(y, sr, params, prompt_hint=(params.prompt_hint or None))
+
     # Optional transient shaping
     if float(params.transient_amount) != 0.0:
-        y = _transient_shaper(y, sr, amount=float(params.transient_amount))
+        y = _transient_shaper(y, sr, amount=float(params.transient_amount), split_hz=float(params.transient_split_hz))
 
     # Fade to avoid clicks
     y = _apply_fade(y, sr, fade_ms=int(params.fade_ms))
@@ -293,6 +628,9 @@ def post_process_audio(x: np.ndarray, sr: int, params: PostProcessParams) -> tup
             release_ms=float(params.compressor_release_ms),
             makeup_db=float(params.compressor_makeup_db),
         )
+
+    # Optional reverb (before normalization so overall loudness stays consistent)
+    y = _apply_reverb(y, sr, params)
 
     # Loudness-ish normalization (RMS target) + safety peak cap.
     if params.normalize_rms_db is not None:

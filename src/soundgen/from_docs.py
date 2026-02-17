@@ -58,6 +58,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--subtitle", default=None, help="Subtitle text (optional). If omitted, uses file stem.")
     p.add_argument("--post", action="store_true", help="Enable post-processing chain (recommended).")
 
+    # Pro controls (passed through to batch.run_item)
+    p.add_argument("--polish", action="store_true", help="Enable conservative denoise/transient/compress/limit defaults")
+    p.add_argument("--emotion", choices=["neutral", "aggressive", "calm", "scared"], default="neutral")
+    p.add_argument("--intensity", type=float, default=0.0, help="0..1")
+    p.add_argument("--variation", type=float, default=0.0, help="0..1")
+    p.add_argument("--pitch-contour", choices=["flat", "rise", "fall", "updown", "downup"], default="flat")
+
+    p.add_argument("--multiband", action="store_true")
+    p.add_argument("--mb-low-hz", type=float, default=180.0)
+    p.add_argument("--mb-high-hz", type=float, default=3800.0)
+    p.add_argument("--mb-low-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-mid-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-high-gain-db", type=float, default=0.0)
+    p.add_argument("--mb-comp-threshold-db", type=float, default=None)
+    p.add_argument("--mb-comp-ratio", type=float, default=2.0)
+
+    p.add_argument("--creature-size", type=float, default=0.0, help="-1..+1")
+    p.add_argument("--formant-shift", type=float, default=0.0)
+
+    p.add_argument("--texture-preset", choices=["off", "auto", "chitter", "rasp", "buzz", "screech"], default="off")
+    p.add_argument("--texture-amount", type=float, default=0.0)
+    p.add_argument("--texture-grain-ms", type=float, default=28.0)
+    p.add_argument("--texture-spray", type=float, default=0.35)
+
+    p.add_argument("--reverb", choices=["off", "room", "cave", "forest", "nether"], default="off")
+    p.add_argument("--reverb-mix", type=float, default=0.0)
+    p.add_argument("--reverb-time", type=float, default=1.0)
+
     # Minecraft export settings
     p.add_argument("--pack-root", default="resourcepack")
     p.add_argument("--mc-target", choices=["resourcepack", "forge"], default="resourcepack")
@@ -132,6 +160,29 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
         model=args.model,
         rfxgen_path=args.rfxgen_path,
+        # Pro controls
+        polish=bool(args.polish),
+        emotion=str(args.emotion),
+        intensity=float(args.intensity),
+        variation=float(args.variation),
+        pitch_contour=str(args.pitch_contour),
+        multiband=bool(args.multiband),
+        mb_low_hz=float(args.mb_low_hz),
+        mb_high_hz=float(args.mb_high_hz),
+        mb_low_gain_db=float(args.mb_low_gain_db),
+        mb_mid_gain_db=float(args.mb_mid_gain_db),
+        mb_high_gain_db=float(args.mb_high_gain_db),
+        mb_comp_threshold_db=(float(args.mb_comp_threshold_db) if args.mb_comp_threshold_db is not None else None),
+        mb_comp_ratio=float(args.mb_comp_ratio),
+        creature_size=float(args.creature_size),
+        formant_shift=float(args.formant_shift),
+        texture_preset=str(args.texture_preset),
+        texture_amount=float(args.texture_amount),
+        texture_grain_ms=float(args.texture_grain_ms),
+        texture_spray=float(args.texture_spray),
+        reverb=str(args.reverb),
+        reverb_mix=float(args.reverb_mix),
+        reverb_time=float(args.reverb_time),
     )
 
     exported = 0
@@ -233,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                     pitch=float(args.pitch),
                     subtitle=str(subtitle) if subtitle else None,
                     subtitle_key=subtitle_key,
-                    post=bool(args.post),
+                    post=bool(args.post or args.polish),
                     tags=("from_doc", doc.suffix.lower().lstrip(".")),
                 )
 
@@ -272,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
             volume=float(args.volume),
             pitch=float(args.pitch),
             subtitle=subtitle,
-            post=bool(args.post),
+            post=bool(args.post or args.polish),
             tags=("from_doc", doc.suffix.lower().lstrip(".")),
         )
 
