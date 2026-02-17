@@ -135,6 +135,8 @@ Notes:
 - More preset packs (UI/UI+gameplay/creature families) and community-contributed templates
 - Fine-tuning workflow (optional): dataset format + training script + inference loading
 - Plugin-style engine registry additions (third-party engines without core changes)
+
+See the full status + milestones in [docs/roadmap.md](docs/roadmap.md).
 - Some features still require external tools (e.g. `ffmpeg` on PATH for MP3/OGG export).
 
 ## In-repo demo sound pack (v1)
