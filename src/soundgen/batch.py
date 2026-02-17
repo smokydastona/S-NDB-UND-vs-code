@@ -23,6 +23,16 @@ def _default_sound_path(namespace: str, event: str) -> str:
     return f"generated/{safe.replace('.', '/')}"
 
 
+def _slug(s: str) -> str:
+    import re
+
+    s = str(s or "").strip().lower()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^a-z0-9_\-.]", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s[:64] or "sound"
+
+
 def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: str | None) -> PostProcessParams:
     # Reasonable defaults for Minecraft, plus optional "pro" DSP controls.
     intensity = float(np.clip(float(getattr(args, "intensity", 0.0)), 0.0, 1.0))
@@ -232,12 +242,37 @@ def _zip_folder(src_dir: Path, zip_path: Path) -> None:
             z.write(p, arcname=str(p.relative_to(src_dir)))
 
 
-def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
+def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[Path]:
     pack_root = Path(args.pack_root)
     write_pack_mcmeta = args.mc_target == "resourcepack"
 
+    # Per-item overrides (manifest) layered on top of CLI defaults.
+    effective_args = argparse.Namespace(**vars(args))
+    if item.pro_preset:
+        effective_args.pro_preset = str(item.pro_preset)
+        apply_pro_preset(preset_key=str(item.pro_preset), args=effective_args, parser=parser)
+    if item.polish_profile:
+        effective_args.polish_profile = str(item.polish_profile)
+        apply_polish_profile(profile_key=str(item.polish_profile), args=effective_args, parser=parser)
+
+    if item.emotion:
+        effective_args.emotion = str(item.emotion)
+    if item.intensity is not None:
+        effective_args.intensity = float(item.intensity)
+    if item.variation is not None:
+        effective_args.variation = float(item.variation)
+    if item.pitch_contour:
+        effective_args.pitch_contour = str(item.pitch_contour)
+    if item.loop is not None:
+        effective_args.loop = bool(item.loop)
+    if item.loop_crossfade_ms is not None:
+        effective_args.loop_crossfade_ms = int(item.loop_crossfade_ms)
+
     namespace = item.namespace
-    event = item.event
+    event = (item.event or "").strip()
+    if not event:
+        # Automatic naming for modder workflows: derive an event id from the prompt.
+        event = f"generated.batch.{_slug(item.prompt)}"
 
     base_sound_path = item.sound_path or _default_sound_path(namespace, event)
     out_files: list[Path] = []
@@ -246,7 +281,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
         tmp_dir = Path(tmp)
 
         default_zips = sorted(Path(".examples").joinpath("sound libraies").glob("*.zip"))
-        zip_args = args.library_zip if args.library_zip else [str(p) for p in default_zips]
+        zip_args = effective_args.library_zip if effective_args.library_zip else [str(p) for p in default_zips]
 
         for i in range(max(1, int(item.variants))):
             suffix = f"_{i+1:02d}" if item.variants > 1 else ""
@@ -261,11 +296,11 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                     "engine=samplelib but no --library-zip provided and no default zips found at .examples/sound libraies/*.zip"
                 )
 
-            pitch_contour = str(getattr(args, "pitch_contour", "flat") or "flat")
+            pitch_contour = str(getattr(effective_args, "pitch_contour", "flat") or "flat")
             effective_prompt = item.prompt
 
             # Optional pro preset prompt augmentation (only for AI/sample selection engines).
-            preset_key = str(getattr(args, "pro_preset", "off") or "off").strip()
+            preset_key = str(getattr(effective_args, "pro_preset", "off") or "off").strip()
             preset_obj = PRO_PRESETS.get(preset_key) if preset_key.lower() != "off" else None
             if preset_obj is not None and preset_obj.prompt_suffix and item.engine in {"diffusers", "replicate", "samplelib", "layered"}:
                 suf = str(preset_obj.prompt_suffix).strip()
@@ -279,7 +314,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                 processed, _ = post_process_audio(
                     audio,
                     sr,
-                    _pp_params(args=args, post_seed=seed_i, prompt_hint=effective_prompt),
+                    _pp_params(args=effective_args, post_seed=seed_i, prompt_hint=effective_prompt),
                 )
                 return processed, "post"
 
@@ -290,18 +325,18 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                 seed=seed_i,
                 out_wav=tmp_wav,
                 postprocess_fn=(_pp if item.post else None),
-                device=str(args.device),
-                model=str(args.model),
-                diffusers_multiband=bool(getattr(args, "diffusers_multiband", False)),
-                diffusers_multiband_mode=str(getattr(args, "diffusers_mb_mode", "auto")),
-                diffusers_multiband_low_hz=float(getattr(args, "diffusers_mb_low_hz", 250.0)),
-                diffusers_multiband_high_hz=float(getattr(args, "diffusers_mb_high_hz", 3000.0)),
+                device=str(effective_args.device),
+                model=str(effective_args.model),
+                diffusers_multiband=bool(getattr(effective_args, "diffusers_multiband", False)),
+                diffusers_multiband_mode=str(getattr(effective_args, "diffusers_mb_mode", "auto")),
+                diffusers_multiband_low_hz=float(getattr(effective_args, "diffusers_mb_low_hz", 250.0)),
+                diffusers_multiband_high_hz=float(getattr(effective_args, "diffusers_mb_high_hz", 3000.0)),
                 preset=item.preset,
                 layered_preset=(item.preset or "auto"),
-                rfxgen_path=(Path(args.rfxgen_path) if args.rfxgen_path else None),
+                rfxgen_path=(Path(effective_args.rfxgen_path) if effective_args.rfxgen_path else None),
                 library_zips=tuple(Path(p) for p in zip_args),
-                library_pitch_min=float(args.library_pitch_min),
-                library_pitch_max=float(args.library_pitch_max),
+                library_pitch_min=float(effective_args.library_pitch_min),
+                library_pitch_max=float(effective_args.library_pitch_max),
                 sample_rate=44100,
             )
 
@@ -318,9 +353,9 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                 pitch=float(item.pitch),
                 subtitle=item.subtitle,
                 subtitle_key=item.subtitle_key,
-                ogg_quality=int(args.ogg_quality),
-                sample_rate=int(args.mc_sample_rate),
-                channels=int(args.mc_channels),
+                ogg_quality=int(effective_args.ogg_quality),
+                sample_rate=int(effective_args.mc_sample_rate),
+                channels=int(effective_args.mc_channels),
                 description="S-NDB-UND pack",
                 write_pack_mcmeta=write_pack_mcmeta,
             )
@@ -330,14 +365,14 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
             credits: dict = {
                 "engine": item.engine,
                 "prompt": item.prompt,
-                "emotion": str(getattr(args, "emotion", "neutral") or "neutral"),
-                "intensity": float(getattr(args, "intensity", 0.0) or 0.0),
-                "variation": float(getattr(args, "variation", 0.0) or 0.0),
+                "emotion": str(getattr(effective_args, "emotion", "neutral") or "neutral"),
+                "intensity": float(getattr(effective_args, "intensity", 0.0) or 0.0),
+                "variation": float(getattr(effective_args, "variation", 0.0) or 0.0),
                 "pitch_contour": pitch_contour,
-                "pro_preset": str(getattr(args, "pro_preset", "off")),
-                "polish_profile": str(getattr(args, "polish_profile", "off")),
-                "loop_clean": bool(getattr(args, "loop", False)),
-                "loop_crossfade_ms": int(getattr(args, "loop_crossfade_ms", 100)),
+                "pro_preset": str(getattr(effective_args, "pro_preset", "off")),
+                "polish_profile": str(getattr(effective_args, "polish_profile", "off")),
+                "loop_clean": bool(getattr(effective_args, "loop", False)),
+                "loop_crossfade_ms": int(getattr(effective_args, "loop_crossfade_ms", 100)),
             }
             credits.update({k: v for k, v in generated.credits_extra.items() if v is not None})
             if sources:
@@ -352,7 +387,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
             )
 
             append_record(
-                Path(args.catalog),
+                Path(effective_args.catalog),
                 make_record(
                     engine=item.engine,
                     prompt=item.prompt,
@@ -382,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total = 0
     for item in items:
-        outs = run_item(item, args=args)
+        outs = run_item(item, args=args, parser=parser)
         total += len(outs)
         for o in outs:
             print(f"Wrote {o}")

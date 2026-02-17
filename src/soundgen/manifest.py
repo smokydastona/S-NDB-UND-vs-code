@@ -20,6 +20,16 @@ class ManifestItem:
     seed: Optional[int] = None
     preset: Optional[str] = None  # rfxgen
 
+    # Optional per-item overrides (useful for workflow-ready batch generation)
+    pro_preset: Optional[str] = None
+    polish_profile: Optional[str] = None
+    emotion: Optional[str] = None
+    intensity: Optional[float] = None
+    variation: Optional[float] = None
+    pitch_contour: Optional[str] = None
+    loop: Optional[bool] = None
+    loop_crossfade_ms: Optional[int] = None
+
     variants: int = 1
     weight: int = 1
     volume: float = 1.0
@@ -81,6 +91,16 @@ def _item_from_mapping(m: dict[str, Any]) -> ManifestItem:
         seconds=_coerce_float(m.get("seconds"), 3.0),
         seed=(int(m["seed"]) if m.get("seed") not in (None, "") else None),
         preset=(str(m["preset"]).strip() if m.get("preset") else None),
+
+        pro_preset=(str(m["pro_preset"]).strip() if m.get("pro_preset") else None),
+        polish_profile=(str(m["polish_profile"]).strip() if m.get("polish_profile") else None),
+        emotion=(str(m["emotion"]).strip() if m.get("emotion") else None),
+        intensity=(float(m["intensity"]) if m.get("intensity") not in (None, "") else None),
+        variation=(float(m["variation"]) if m.get("variation") not in (None, "") else None),
+        pitch_contour=(str(m["pitch_contour"]).strip() if m.get("pitch_contour") else None),
+        loop=(_coerce_bool(m.get("loop"), default=False) if "loop" in m else None),
+        loop_crossfade_ms=(_coerce_int(m.get("loop_crossfade_ms"), 100) if "loop_crossfade_ms" in m else None),
+
         variants=max(1, _coerce_int(m.get("variants"), 1)),
         weight=max(1, _coerce_int(m.get("weight"), 1)),
         volume=_coerce_float(m.get("volume"), 1.0),
