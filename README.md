@@ -170,6 +170,26 @@ Granular texture (hybrid "diffusion + granular" feel, but DSP):
 python -m soundgen.generate --engine layered --prompt "insect chitter" --seconds 1.5 --layered-granular-preset chitter --layered-granular-amount 0.45 --layered-granular-spray 0.60 --post --out outputs\chitter.wav
 ```
 
+Granular preset showcase (generate local audio snippets)
+
+To keep the repo clean, these snippets are generated locally (not committed). Each command writes a short WAV you can audition.
+
+| Preset | What it’s good at | Suggested starting point |
+|---|---|---|
+| `chitter` | insectoid chatter, skittering texture | `--layered-granular-amount 0.40` `--layered-granular-spray 0.60` `--layered-granular-grain-ms 18` |
+| `rasp` | gritty creature throat / undead rasp | `--layered-granular-amount 0.30` `--layered-granular-spray 0.35` `--layered-granular-grain-ms 35` |
+| `buzz` | wasp/bee buzz, electrical fuzz layer | `--layered-granular-amount 0.35` `--layered-granular-spray 0.75` `--layered-granular-grain-ms 10` |
+| `screech` | sharp scrapes, squeals, shrieks | `--layered-granular-amount 0.25` `--layered-granular-spray 0.25` `--layered-granular-grain-ms 70` |
+
+```powershell
+python -m soundgen.generate --engine layered --seconds 1.5 --seed 100 --prompt "insect chitter" --layered-granular-preset chitter --layered-granular-amount 0.40 --layered-granular-spray 0.60 --layered-granular-grain-ms 18 --post --out outputs\showcase\granular_chitter.wav
+python -m soundgen.generate --engine layered --seconds 1.5 --seed 101 --prompt "creature rasp"   --layered-granular-preset rasp    --layered-granular-amount 0.30 --layered-granular-spray 0.35 --layered-granular-grain-ms 35 --post --out outputs\showcase\granular_rasp.wav
+python -m soundgen.generate --engine layered --seconds 1.5 --seed 102 --prompt "wasp buzz"       --layered-granular-preset buzz    --layered-granular-amount 0.35 --layered-granular-spray 0.75 --layered-granular-grain-ms 10 --post --out outputs\showcase\granular_buzz.wav
+python -m soundgen.generate --engine layered --seconds 1.5 --seed 103 --prompt "screechy scrape" --layered-granular-preset screech --layered-granular-amount 0.25 --layered-granular-spray 0.25 --layered-granular-grain-ms 70 --post --out outputs\showcase\granular_screech.wav
+```
+
+Tip: run `./scripts/make_granular_showcase.ps1` to generate all four.
+
 How `family` + `source lock` + `micro-variation` interact (high-level):
 
 ```mermaid
