@@ -50,17 +50,28 @@ $commonCollect = @(
   "--collect-all", "safetensors"
 )
 
+function Invoke-PyInstaller {
+  param(
+    [Parameter(Mandatory=$true)][string[]]$Args
+  )
+
+  python -m PyInstaller @Args
+  if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE"
+  }
+}
+
 $genArgs = @()
 $genArgs += $commonArgs
 $genArgs += @("--name", $genName)
 $genArgs += $commonCollect
 $genArgs += @(
-  "-m", "soundgen.generate",
   "--distpath", $OutDir,
-  "--workpath", $WorkDir
+  "--workpath", $WorkDir,
+  "src/soundgen/generate.py"
 )
 
-& pyinstaller @genArgs
+Invoke-PyInstaller -Args $genArgs
 
 $webArgs = @()
 $webArgs += $commonArgs
@@ -70,12 +81,12 @@ $webArgs += @(
 )
 $webArgs += $commonCollect
 $webArgs += @(
-  "-m", "soundgen.web",
   "--distpath", $OutDir,
-  "--workpath", $WorkDir
+  "--workpath", $WorkDir,
+  "src/soundgen/web.py"
 )
 
-& pyinstaller @webArgs
+Invoke-PyInstaller -Args $webArgs
 
 $desktopArgs = @()
 $desktopArgs += $commonArgs
@@ -87,11 +98,11 @@ $desktopArgs += @(
 )
 $desktopArgs += $commonCollect
 $desktopArgs += @(
-  "-m", "soundgen.desktop",
   "--distpath", $OutDir,
-  "--workpath", $WorkDir
+  "--workpath", $WorkDir,
+  "src/soundgen/desktop.py"
 )
 
-& pyinstaller @desktopArgs
+Invoke-PyInstaller -Args $desktopArgs
 
 Write-Host "Built executables into $OutDir\\$genName, $OutDir\\$webName, and $OutDir\\$desktopName"
