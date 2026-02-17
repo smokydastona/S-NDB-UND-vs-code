@@ -14,6 +14,7 @@ from .qa import compute_metrics, detect_long_tail
 from .minecraft import export_wav_to_minecraft_pack
 from .credits import upsert_pack_credits, write_sidecar_credits
 from .controls import map_prompt_to_controls
+from .pro_presets import apply_pro_preset, pro_preset_keys
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -221,6 +222,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lowpass-hz", type=float, default=16000.0, help="Lowpass cutoff. Use 0 to disable.")
 
     # Pro controls (conditioning channels)
+    p.add_argument(
+        "--pro-preset",
+        choices=["off", *pro_preset_keys()],
+        default="off",
+        help="High-level preset that sets sensible defaults (polish/conditioning/DSP). Only overrides values still at their defaults.",
+    )
     p.add_argument(
         "--emotion",
         choices=["neutral", "aggressive", "calm", "scared"],
@@ -433,7 +440,11 @@ def _slug_from_prompt(prompt: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Apply pro preset after parsing so we can compare against argparse defaults.
+    apply_pro_preset(preset_key=str(args.pro_preset), args=args, parser=parser)
 
     if args.duration is not None:
         args.seconds = float(args.duration)
@@ -628,6 +639,8 @@ def main(argv: list[str] | None = None) -> int:
             "sound_path": str(sound_path),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
+        if getattr(args, "pro_preset", "off") != "off":
+            data["pro_preset"] = str(args.pro_preset)
         if generated.sources:
             data["sources"] = list(generated.sources)
 

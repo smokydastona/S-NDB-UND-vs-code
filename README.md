@@ -83,6 +83,28 @@ This runs 2-3 diffusers generations (auto) and recombines low/mid/high bands for
 python -m soundgen.generate --engine diffusers --diffusers-multiband --diffusers-mb-mode auto --diffusers-mb-low-hz 250 --diffusers-mb-high-hz 3000 --prompt "monster roar" --seconds 2.5 --seed 123 --post --out outputs\roar_multiband.wav
 ```
 
+**Pro presets (one-click “paid tool” defaults)**
+
+`--pro-preset <key>` applies a curated preset that turns on sensible post/polish defaults plus conditioning + DSP knobs.
+It applies conservatively: it only overrides values that are still at their defaults, so you can still tweak sliders/flags.
+
+Examples:
+
+```powershell
+# Creature: Small chitter (adds texture + polish + conditioning)
+python -m soundgen.generate --engine diffusers --pro-preset creature.small_chitter --prompt "monster" --seed 42 --post --out outputs\small_chitter.wav
+
+# Environment: Cave drone (longer + darker + space)
+python -m soundgen.generate --engine diffusers --pro-preset env.cave_drone --prompt "ambience" --seed 7 --post --out outputs\cave_drone.wav
+```
+
+You can use the same `--pro-preset` flag in:
+
+- CLI single generation: `python -m soundgen.generate ...`
+- Web UI: `python -m soundgen.web` (Pro controls → pro preset)
+- Batch: `python -m soundgen.batch ...`
+- Docs workflow: `python -m soundgen.from_docs ...`
+
 ### Export format options (non-Minecraft)
 
 By default, `--out` writes a 16-bit PCM WAV. You can change WAV encoding or export other formats:

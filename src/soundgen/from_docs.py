@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from .manifest import ManifestItem
 from .doc_reader import UnsupportedDocumentError, extract_sound_prompts, read_document_text, to_prompt
 from .batch import run_item
+from .pro_presets import apply_pro_preset, pro_preset_keys
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--post", action="store_true", help="Enable post-processing chain (recommended).")
 
     # Pro controls (passed through to batch.run_item)
+    p.add_argument(
+        "--pro-preset",
+        choices=["off", *pro_preset_keys()],
+        default="off",
+        help="High-level preset that sets sensible defaults (polish/conditioning/DSP). Only overrides values still at their defaults.",
+    )
     p.add_argument("--polish", action="store_true", help="Enable conservative denoise/transient/compress/limit defaults")
     p.add_argument("--emotion", choices=["neutral", "aggressive", "calm", "scared"], default="neutral")
     p.add_argument("--intensity", type=float, default=0.0, help="0..1")
@@ -140,7 +147,11 @@ def _stable_seed(*parts: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Apply pro preset after parsing so we can compare against argparse defaults.
+    apply_pro_preset(preset_key=str(getattr(args, "pro_preset", "off")), args=args, parser=parser)
 
     in_dir = Path(args.in_dir)
     if not in_dir.exists():
@@ -172,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         diffusers_mb_low_hz=float(getattr(args, "diffusers_mb_low_hz", 250.0)),
         diffusers_mb_high_hz=float(getattr(args, "diffusers_mb_high_hz", 3000.0)),
         # Pro controls
+        pro_preset=str(getattr(args, "pro_preset", "off")),
         polish=bool(args.polish),
         emotion=str(args.emotion),
         intensity=float(args.intensity),

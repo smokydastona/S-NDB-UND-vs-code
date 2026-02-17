@@ -15,6 +15,7 @@ from .postprocess import PostProcessParams, post_process_audio
 from .qa import compute_metrics, detect_long_tail
 from .qa_viz import spectrogram_image, waveform_image
 from .controls import map_prompt_to_controls
+from .pro_presets import PRO_PRESETS, pro_preset_keys
 
 
 def _generate(
@@ -53,6 +54,8 @@ def _generate(
     wav_subtype: str,
     mp3_bitrate: str,
     map_controls: bool,
+
+    pro_preset: str,
 
     emotion: str,
     intensity: float,
@@ -98,6 +101,108 @@ def _generate(
 
     fmt = _infer_out_format()
     out_path = Path("outputs") / f"web.{fmt}"
+
+    # Apply pro preset conservatively (only if fields are at UI defaults).
+    preset_key = str(pro_preset or "off").strip()
+    if preset_key and preset_key.lower() != "off":
+        preset_obj = PRO_PRESETS.get(preset_key)
+        if preset_obj is not None:
+            # Prompt augmentation for AI/sample selection engines.
+            eng = str(engine or "").strip().lower()
+            if preset_obj.prompt_suffix and eng in {"diffusers", "replicate", "samplelib", "layered"}:
+                suf = str(preset_obj.prompt_suffix).strip()
+                if suf and suf.lower() not in str(prompt).lower():
+                    prompt = str(prompt).rstrip() + ", " + suf
+
+            # Map preset dest names (CLI) -> web variable names.
+            dest_map = {
+                "reverb": "reverb_preset",
+            }
+
+            # UI defaults (must match the values defined in main()).
+            defaults = {
+                "seconds": 3.0,
+                "post": True,
+                "polish": False,
+                "emotion": "neutral",
+                "intensity": 0.0,
+                "variation": 0.0,
+                "pitch_contour": "flat",
+                "multiband": False,
+                "mb_low_hz": 250.0,
+                "mb_high_hz": 3000.0,
+                "mb_low_gain_db": 0.0,
+                "mb_mid_gain_db": 0.0,
+                "mb_high_gain_db": 0.0,
+                "mb_comp_threshold_db": None,
+                "mb_comp_ratio": 2.0,
+                "creature_size": 0.0,
+                "formant_shift": 1.0,
+                "texture_preset": "off",
+                "texture_amount": 0.0,
+                "texture_grain_ms": 22.0,
+                "texture_spray": 0.55,
+                "reverb_preset": "off",
+                "reverb_mix": 0.0,
+                "reverb_time": 1.2,
+            }
+
+            state = {
+                "seconds": seconds,
+                "post": post,
+                "polish": polish,
+                "emotion": emotion,
+                "intensity": intensity,
+                "variation": variation,
+                "pitch_contour": pitch_contour,
+                "multiband": multiband,
+                "mb_low_hz": mb_low_hz,
+                "mb_high_hz": mb_high_hz,
+                "mb_low_gain_db": mb_low_gain_db,
+                "mb_mid_gain_db": mb_mid_gain_db,
+                "mb_high_gain_db": mb_high_gain_db,
+                "mb_comp_threshold_db": mb_comp_threshold_db,
+                "mb_comp_ratio": mb_comp_ratio,
+                "creature_size": creature_size,
+                "formant_shift": formant_shift,
+                "texture_preset": texture_preset,
+                "texture_amount": texture_amount,
+                "texture_grain_ms": texture_grain_ms,
+                "texture_spray": texture_spray,
+                "reverb_preset": reverb_preset,
+                "reverb_mix": reverb_mix,
+                "reverb_time": reverb_time,
+            }
+
+            for dest, value in (preset_obj.args or {}).items():
+                web_dest = dest_map.get(str(dest), str(dest))
+                if web_dest in state and state[web_dest] == defaults.get(web_dest, object()):
+                    state[web_dest] = value
+
+            seconds = float(state["seconds"])
+            post = bool(state["post"])
+            polish = bool(state["polish"])
+            emotion = str(state["emotion"])
+            intensity = float(state["intensity"])
+            variation = float(state["variation"])
+            pitch_contour = str(state["pitch_contour"])
+            multiband = bool(state["multiband"])
+            mb_low_hz = float(state["mb_low_hz"])
+            mb_high_hz = float(state["mb_high_hz"])
+            mb_low_gain_db = float(state["mb_low_gain_db"])
+            mb_mid_gain_db = float(state["mb_mid_gain_db"])
+            mb_high_gain_db = float(state["mb_high_gain_db"])
+            mb_comp_threshold_db = state["mb_comp_threshold_db"]
+            mb_comp_ratio = float(state["mb_comp_ratio"])
+            creature_size = float(state["creature_size"])
+            formant_shift = float(state["formant_shift"])
+            texture_preset = str(state["texture_preset"])
+            texture_amount = float(state["texture_amount"])
+            texture_grain_ms = float(state["texture_grain_ms"])
+            texture_spray = float(state["texture_spray"])
+            reverb_preset = str(state["reverb_preset"])
+            reverb_mix = float(state["reverb_mix"])
+            reverb_time = float(state["reverb_time"])
 
     def _pp_params() -> PostProcessParams:
         # Conditioning
@@ -401,6 +506,8 @@ def _generate(
             "sound_path": str(sp),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
+        if pro_preset != "off":
+            credits["pro_preset"] = str(pro_preset)
         if generated.sources:
             credits["sources"] = list(generated.sources)
 
@@ -532,6 +639,7 @@ def main() -> None:
 
         with gr.Accordion("Pro controls (conditioning + DSP)", open=False):
             gr.Markdown("### Conditioning")
+            pro_preset = gr.Dropdown(["off", *pro_preset_keys()], value="off", label="pro preset")
             with gr.Row():
                 emotion = gr.Dropdown(["neutral", "aggressive", "calm", "scared"], value="neutral", label="emotion")
                 intensity = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="intensity")
@@ -652,6 +760,8 @@ def main() -> None:
                 wav_subtype,
                 mp3_bitrate,
                 map_controls,
+
+                pro_preset,
 
                 emotion,
                 intensity,

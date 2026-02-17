@@ -13,6 +13,7 @@ from .manifest import ManifestItem, load_manifest
 from .minecraft import export_wav_to_minecraft_pack
 from .postprocess import PostProcessParams, post_process_audio
 from .credits import upsert_pack_credits
+from .pro_presets import PRO_PRESETS, apply_pro_preset, pro_preset_keys
 
 
 def _default_sound_path(namespace: str, event: str) -> str:
@@ -125,6 +126,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--diffusers-mb-high-hz", type=float, default=3000.0)
 
     # Post + pro controls (applies to all items where manifest sets post=true)
+    p.add_argument(
+        "--pro-preset",
+        choices=["off", *pro_preset_keys()],
+        default="off",
+        help="High-level preset that sets sensible defaults (polish/conditioning/DSP). Only overrides values still at their defaults.",
+    )
     p.add_argument("--polish", action="store_true", help="Enable conservative denoise/transient/compress/limit defaults")
     p.add_argument("--emotion", choices=["neutral", "aggressive", "calm", "scared"], default="neutral")
     p.add_argument("--intensity", type=float, default=0.0, help="0..1")
@@ -205,6 +212,15 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
 
             pitch_contour = str(getattr(args, "pitch_contour", "flat") or "flat")
             effective_prompt = item.prompt
+
+            # Optional pro preset prompt augmentation (only for AI/sample selection engines).
+            preset_key = str(getattr(args, "pro_preset", "off") or "off").strip()
+            preset_obj = PRO_PRESETS.get(preset_key) if preset_key.lower() != "off" else None
+            if preset_obj is not None and preset_obj.prompt_suffix and item.engine in {"diffusers", "replicate", "samplelib", "layered"}:
+                suf = str(preset_obj.prompt_suffix).strip()
+                if suf and suf.lower() not in effective_prompt.lower():
+                    effective_prompt = f"{effective_prompt}, {suf}"
+
             if pitch_contour != "flat":
                 effective_prompt = f"{effective_prompt}, pitch contour {pitch_contour}"
 
@@ -301,7 +317,11 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Apply pro preset after parsing so we can compare against argparse defaults.
+    apply_pro_preset(preset_key=str(getattr(args, "pro_preset", "off")), args=args, parser=parser)
     items = load_manifest(Path(args.manifest))
 
     total = 0
