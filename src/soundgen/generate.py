@@ -70,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=7.0,
         help="For engine=stable_audio_open: guidance/CFG scale (default 7.0).",
     )
+    p.add_argument(
+        "--stable-audio-sampler",
+        default="auto",
+        choices=["auto", "ddim", "deis", "dpmpp", "dpmpp_2m", "euler", "euler_a"],
+        help="For engine=stable_audio_open: sampler/scheduler (default auto).",
+    )
 
     # Diffusers multi-band mode (runs multiple generations and recombines bands).
     p.add_argument(
@@ -844,6 +850,7 @@ def main(argv: list[str] | None = None) -> int:
             stable_audio_negative_prompt=(args.stable_audio_negative_prompt or None),
             stable_audio_steps=int(args.stable_audio_steps),
             stable_audio_guidance_scale=float(args.stable_audio_guidance_scale),
+            stable_audio_sampler=(None if str(getattr(args, "stable_audio_sampler", "auto")).strip().lower() in {"", "auto", "default"} else str(getattr(args, "stable_audio_sampler"))),
             stable_audio_hf_token=(args.hf_token or None),
             diffusers_multiband=bool(args.diffusers_multiband),
             diffusers_multiband_mode=str(args.diffusers_mb_mode or "auto"),

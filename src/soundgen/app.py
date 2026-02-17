@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import sys
 
 
@@ -26,31 +25,23 @@ def _hide_console_window_windows() -> None:
         return
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="soundgen",
-        description=(
-            "Sound Generator (single app).\n"
-            "- No args: opens the desktop UI window.\n"
-            "- 'generate': CLI generation (same flags as soundgen.generate).\n"
-            "- 'web': Gradio UI in your browser.\n"
-            "- 'desktop': Gradio UI in an embedded desktop window."
-        ),
+def _print_help() -> None:
+    print(
+        "Sound Generator (single app)\n\n"
+        "Usage:\n"
+        "  soundgen.exe                  (opens the desktop UI)\n"
+        "  soundgen.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
+        "  soundgen.exe web <args>       (Gradio UI in your browser)\n"
+        "  soundgen.exe desktop <args>   (UI in an embedded desktop window)\n"
+        "  soundgen.exe mobset <args>    (Minecraft mob soundset generator)\n\n"
+        "Help:\n"
+        "  soundgen.exe mobset --help\n"
+        "  soundgen.exe generate --help\n"
     )
-
-    sub = p.add_subparsers(dest="command")
-
-    sub.add_parser("generate", help="Generate sounds via CLI (prompt -> wav/ogg).")
-    sub.add_parser("web", help="Run the Gradio UI in your browser.")
-    sub.add_parser("desktop", help="Run the UI in an embedded desktop window.")
-
-    return p
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    parser = build_parser()
-
     # Default: desktop UI.
     if not argv:
         _hide_console_window_windows()
@@ -58,8 +49,12 @@ def main(argv: list[str] | None = None) -> int:
 
         return int(run_desktop([]))
 
-    ns, rest = parser.parse_known_args(argv)
-    cmd = (ns.command or "").strip().lower()
+    cmd = str(argv[0]).strip().lower()
+    rest = [str(x) for x in argv[1:]]
+
+    if cmd in {"-h", "--help", "help"}:
+        _print_help()
+        return 0
 
     if cmd == "generate":
         from .generate import main as generate_main
@@ -79,8 +74,13 @@ def main(argv: list[str] | None = None) -> int:
 
         return int(run_desktop(rest))
 
-    # Unknown or missing subcommand.
-    parser.print_help()
+    if cmd == "mobset":
+        from .mob_soundset import run_mob_soundset
+
+        return int(run_mob_soundset(rest))
+
+    # Unknown subcommand.
+    _print_help()
     return 2
 
 

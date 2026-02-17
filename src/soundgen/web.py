@@ -32,6 +32,7 @@ def _generate(
     stable_audio_hf_token: str,
     stable_audio_steps: int,
     stable_audio_guidance_scale: float,
+    stable_audio_sampler: str,
     diffusers_multiband: bool,
     diffusers_mb_mode: str,
     diffusers_mb_low_hz: float,
@@ -591,6 +592,7 @@ def _generate(
                 stable_audio_hf_token=(stable_audio_hf_token or None),
                 stable_audio_steps=int(stable_audio_steps),
                 stable_audio_guidance_scale=float(stable_audio_guidance_scale),
+                stable_audio_sampler=(None if str(stable_audio_sampler or "auto").strip().lower() in {"", "auto", "default"} else str(stable_audio_sampler)),
                 diffusers_multiband=bool(diffusers_multiband),
                 diffusers_multiband_mode=str(diffusers_mb_mode or "auto"),
                 diffusers_multiband_low_hz=float(diffusers_mb_low_hz),
@@ -722,6 +724,11 @@ def build_demo() -> gr.Blocks:
                 with gr.Row():
                     stable_audio_steps = gr.Slider(10, 200, value=100, step=1, label="Steps")
                     stable_audio_guidance_scale = gr.Slider(1.0, 12.0, value=7.0, step=0.5, label="Guidance (CFG)")
+                stable_audio_sampler = gr.Dropdown(
+                    ["auto", "ddim", "deis", "dpmpp", "dpmpp_2m", "euler", "euler_a"],
+                    value="auto",
+                    label="Sampler (scheduler)",
+                )
 
             with gr.Accordion("Diffusers multi-band (model-side)", open=False):
                 diffusers_multiband = gr.Checkbox(value=False, label="Enable multi-band diffusers (slower, cleaner bands)")
@@ -958,6 +965,7 @@ def build_demo() -> gr.Blocks:
                 stable_audio_hf_token,
                 stable_audio_steps,
                 stable_audio_guidance_scale,
+                stable_audio_sampler,
                 diffusers_multiband,
                 diffusers_mb_mode,
                 diffusers_mb_low_hz,

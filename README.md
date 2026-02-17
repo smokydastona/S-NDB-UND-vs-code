@@ -136,7 +136,20 @@ Example:
 
 ```powershell
 python -m soundgen.generate --engine stable_audio_open --hf-token <YOUR_TOKEN>
+python -m soundgen.generate --engine stable_audio_open --stable-audio-sampler euler_a --hf-token <YOUR_TOKEN>
 python -m soundgen.generate --engine stable_audio_open --candidates 4 --stable-audio-steps 100 --stable-audio-guidance-scale 7 --prompt "metallic ui confirm" --seconds 1.2 --seed 42 --post --out outputs\ui_confirm.wav
+
+## Minecraft mob soundset generator
+
+Generate a full set of mob sounds (hurt/death/ambient/step) directly into a pack:
+
+```powershell
+# EXE (from the Windows artifact)
+soundgen.exe mobset --mob zombie --namespace mymod --pack-root resourcepack --engine stable_audio_open --variants 4 --subtitle-base "Zombie" --show-snippet -- --post --polish
+
+# Python
+python -m soundgen.app mobset --mob zombie --namespace mymod --pack-root resourcepack --engine layered --variants 4 --show-snippet -- --post --polish
+```
 ```
 
 ### Polish mode (DSP)

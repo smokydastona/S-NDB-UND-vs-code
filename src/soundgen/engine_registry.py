@@ -100,6 +100,7 @@ def generate_wav(
     stable_audio_negative_prompt: str | None = None,
     stable_audio_steps: int = 100,
     stable_audio_guidance_scale: float = 7.0,
+    stable_audio_sampler: str | None = None,
     stable_audio_hf_token: str | None = None,
     sample_rate: int = 44100,
 ) -> GeneratedWav:
@@ -199,6 +200,7 @@ def generate_wav(
                 stable_audio_negative_prompt=stable_audio_negative_prompt,
                 stable_audio_steps=stable_audio_steps,
                 stable_audio_guidance_scale=stable_audio_guidance_scale,
+                stable_audio_sampler=stable_audio_sampler,
 
                 sample_rate=sample_rate,
             )
@@ -358,6 +360,7 @@ def generate_wav(
             negative_prompt=(str(stable_audio_negative_prompt) if stable_audio_negative_prompt else None),
             num_inference_steps=int(stable_audio_steps),
             guidance_scale=float(stable_audio_guidance_scale),
+            sampler=(str(stable_audio_sampler) if stable_audio_sampler else None),
             hf_token=(str(stable_audio_hf_token).strip() if stable_audio_hf_token else None),
         )
         audio, sr = generate_audio(sp)
@@ -370,6 +373,7 @@ def generate_wav(
             "seed": seed,
             "stable_audio_steps": int(sp.num_inference_steps),
             "stable_audio_guidance_scale": float(sp.guidance_scale),
+            "stable_audio_sampler": (str(sp.sampler) if sp.sampler else None),
             "stable_audio_negative_prompt": (str(sp.negative_prompt) if sp.negative_prompt else None),
         }
         return GeneratedWav(wav_path=out_wav, post_info=post_info, sources=sources, credits_extra=credits_extra)
