@@ -3,24 +3,25 @@
 ## Big picture
 - This is a **Python (src-layout)** project for generating **Minecraft-ready SFX** from prompts.
 - Main data flow: **prompt → engine generates mono WAV (float32) → optional post-process → export**
-  - WAV write: [src/soundgen/io_utils.py](../src/soundgen/io_utils.py)
-  - Post-process chain + QA flags: [src/soundgen/postprocess.py](../src/soundgen/postprocess.py), [src/soundgen/qa.py](../src/soundgen/qa.py)
-  - Minecraft export (`.ogg` + `sounds.json` + optional `lang/en_us.json`): [src/soundgen/minecraft.py](../src/soundgen/minecraft.py)
+  - WAV write: `src/soundgen/io_utils.py`
+  - Post-process chain + QA flags: `src/soundgen/postprocess.py`, `src/soundgen/qa.py`
+  - Minecraft export (`.ogg` + `sounds.json` + optional `lang/en_us.json`): `src/soundgen/minecraft.py`
 
 ## Entry points (use these patterns)
-- CLI (single sound): [src/soundgen/generate.py](../src/soundgen/generate.py)
+- CLI (single sound): `src/soundgen/generate.py`
   - `python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --post`
   - Minecraft: `--minecraft --namespace mymod --event ui.coin --variants 5 --subtitle "Coin"`
-- Web UI (Gradio): [src/soundgen/web.py](../src/soundgen/web.py)
-- Batch from manifest (CSV/JSON): [src/soundgen/batch.py](../src/soundgen/batch.py)
-- Doc inputs (drop docs in `pre_gen_sound/`): [src/soundgen/from_docs.py](../src/soundgen/from_docs.py)
+- Web UI (Gradio): `src/soundgen/web.py`
+- Batch from manifest (CSV/JSON): `src/soundgen/batch.py`
+- Doc inputs (drop docs in `pre_gen_sound/`): `src/soundgen/from_docs.py`
 
 ## Engines (how they’re wired)
-- `diffusers` engine: [src/soundgen/audiogen_backend.py](../src/soundgen/audiogen_backend.py)
+- `diffusers` engine: `src/soundgen/audiogen_backend.py`
   - Uses `AudioLDM2Pipeline`; includes a GPT-2 LM head workaround.
-- `rfxgen` engine: [src/soundgen/rfxgen_backend.py](../src/soundgen/rfxgen_backend.py)
+- `rfxgen` engine: `src/soundgen/rfxgen_backend.py`
   - External `rfxgen.exe`; Windows helper: [scripts/get_rfxgen.ps1](../scripts/get_rfxgen.ps1)
-- Optional paid API engine: `replicate` in [src/soundgen/replicate_backend.py](../src/soundgen/replicate_backend.py)
+  - External `rfxgen.exe`; Windows helper: `scripts/get_rfxgen.ps1`
+- Optional paid API engine: `replicate` in `src/soundgen/replicate_backend.py`
   - Token via `REPLICATE_API_TOKEN` or `--replicate-token`.
 
 ## Minecraft 1.20.1 conventions
@@ -72,25 +73,25 @@ After implementing any requested change, ALWAYS run a full workspace scan/valida
 After the workspace-wide scan, proactively review the connected modules/configs that must remain consistent so we don’t ship a change that breaks generation/export.
 
 ### Impact radius checklists
-- **Audio format / I/O changes** ([src/soundgen/io_utils.py](../src/soundgen/io_utils.py))
+- **Audio format / I/O changes** (`src/soundgen/io_utils.py`)
   - Ensure all intermediate arrays remain mono `float32` in `[-1, 1]`.
   - WAV write stays Minecraft-friendly (`PCM_16`) unless there’s a strong reason.
-- **Post-process / QA changes** ([src/soundgen/postprocess.py](../src/soundgen/postprocess.py), [src/soundgen/qa.py](../src/soundgen/qa.py))
+- **Post-process / QA changes** (`src/soundgen/postprocess.py`, `src/soundgen/qa.py`)
   - Confirm no NaNs/inf introduced; confirm final clip to `[-1, 1]` remains.
   - Ensure trimming never returns empty audio (downstream code expects non-empty).
-- **Minecraft export changes** ([src/soundgen/minecraft.py](../src/soundgen/minecraft.py))
+- **Minecraft export changes** (`src/soundgen/minecraft.py`)
   - Keep event ids sanitized and stable: `<namespace>:<event>`.
   - Preserve `sounds.json` schema: event → `{sounds: [...]}` with object entries for `name/weight/volume/pitch`.
   - Verify subtitle writes both `sounds.json` and `assets/<ns>/lang/en_us.json`.
   - Re-check ffmpeg discovery and the `wav->ogg` conversion command.
-- **Engine wiring changes** ([src/soundgen/generate.py](../src/soundgen/generate.py), [src/soundgen/audiogen_backend.py](../src/soundgen/audiogen_backend.py), [src/soundgen/rfxgen_backend.py](../src/soundgen/rfxgen_backend.py), [src/soundgen/replicate_backend.py](../src/soundgen/replicate_backend.py))
+- **Engine wiring changes** (`src/soundgen/generate.py`, `src/soundgen/audiogen_backend.py`, `src/soundgen/rfxgen_backend.py`, `src/soundgen/replicate_backend.py`)
   - Keep heavy deps lazily imported so `--help` stays fast.
   - Maintain deterministic behavior with `--seed` where supported.
   - Ensure rfxgen executable resolution still supports PATH + `tools/rfxgen/rfxgen.exe` + `--rfxgen-path`.
-- **Web UI changes** ([src/soundgen/web.py](../src/soundgen/web.py))
+- **Web UI changes** (`src/soundgen/web.py`)
   - Keep UI controls in sync with CLI meaning (post-processing, Minecraft export fields).
   - Verify generated file + playsound string + QA text still return correctly.
-- **Batch / docs workflow changes** ([src/soundgen/batch.py](../src/soundgen/batch.py), [src/soundgen/from_docs.py](../src/soundgen/from_docs.py))
+- **Batch / docs workflow changes** (`src/soundgen/batch.py`, `src/soundgen/from_docs.py`)
   - Keep manifest schema backwards compatible when possible.
   - Confirm `pre_gen_sound/` is still gitignored and doc parsing remains robust.
 
