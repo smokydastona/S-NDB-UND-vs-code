@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,9 @@ from .minecraft import sanitize_id
 
 def write_sidecar_credits(audio_path: Path, credits: dict[str, Any]) -> Path:
     """Write credits next to an audio file as <file>.<ext>.credits.json."""
+
+    if "created_utc" not in credits:
+        credits["created_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     audio_path = Path(audio_path)
     out = audio_path.with_name(audio_path.name + ".credits.json")
@@ -36,6 +40,9 @@ def upsert_pack_credits(
         }
       }
     """
+
+    if "created_utc" not in credits:
+        credits["created_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     pack_root = Path(pack_root)
     namespace = sanitize_id(namespace, kind="namespace")

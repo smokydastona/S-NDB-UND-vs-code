@@ -337,6 +337,16 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
                 library_zips=tuple(Path(p) for p in zip_args),
                 library_pitch_min=float(effective_args.library_pitch_min),
                 library_pitch_max=float(effective_args.library_pitch_max),
+                stable_audio_model=(str(item.stable_audio_model) if item.stable_audio_model else None),
+                stable_audio_negative_prompt=(
+                    str(item.stable_audio_negative_prompt) if item.stable_audio_negative_prompt else None
+                ),
+                stable_audio_steps=(int(item.stable_audio_steps) if item.stable_audio_steps is not None else 100),
+                stable_audio_guidance_scale=(
+                    float(item.stable_audio_guidance_scale) if item.stable_audio_guidance_scale is not None else 7.0
+                ),
+                stable_audio_sampler=(str(item.stable_audio_sampler) if item.stable_audio_sampler else None),
+                stable_audio_hf_token=(str(item.stable_audio_hf_token) if item.stable_audio_hf_token else None),
                 sample_rate=44100,
             )
 

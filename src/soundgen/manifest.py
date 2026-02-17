@@ -20,6 +20,14 @@ class ManifestItem:
     seed: Optional[int] = None
     preset: Optional[str] = None  # rfxgen
 
+    # stable_audio_open (optional)
+    stable_audio_model: Optional[str] = None
+    stable_audio_negative_prompt: Optional[str] = None
+    stable_audio_steps: Optional[int] = None
+    stable_audio_guidance_scale: Optional[float] = None
+    stable_audio_sampler: Optional[str] = None
+    stable_audio_hf_token: Optional[str] = None
+
     # Optional per-item overrides (useful for workflow-ready batch generation)
     pro_preset: Optional[str] = None
     polish_profile: Optional[str] = None
@@ -91,6 +99,17 @@ def _item_from_mapping(m: dict[str, Any]) -> ManifestItem:
         seconds=_coerce_float(m.get("seconds"), 3.0),
         seed=(int(m["seed"]) if m.get("seed") not in (None, "") else None),
         preset=(str(m["preset"]).strip() if m.get("preset") else None),
+
+        stable_audio_model=(str(m["stable_audio_model"]).strip() if m.get("stable_audio_model") else None),
+        stable_audio_negative_prompt=(
+            str(m["stable_audio_negative_prompt"]).strip() if m.get("stable_audio_negative_prompt") else None
+        ),
+        stable_audio_steps=(int(m["stable_audio_steps"]) if m.get("stable_audio_steps") not in (None, "") else None),
+        stable_audio_guidance_scale=(
+            float(m["stable_audio_guidance_scale"]) if m.get("stable_audio_guidance_scale") not in (None, "") else None
+        ),
+        stable_audio_sampler=(str(m["stable_audio_sampler"]).strip() if m.get("stable_audio_sampler") else None),
+        stable_audio_hf_token=(str(m["stable_audio_hf_token"]).strip() if m.get("stable_audio_hf_token") else None),
 
         pro_preset=(str(m["pro_preset"]).strip() if m.get("pro_preset") else None),
         polish_profile=(str(m["polish_profile"]).strip() if m.get("polish_profile") else None),
