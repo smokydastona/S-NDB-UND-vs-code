@@ -102,6 +102,9 @@ def generate_wav(
     stable_audio_guidance_scale: float = 7.0,
     stable_audio_sampler: str | None = None,
     stable_audio_hf_token: str | None = None,
+    stable_audio_lora_path: str | None = None,
+    stable_audio_lora_scale: float = 1.0,
+    stable_audio_lora_trigger: str | None = None,
     sample_rate: int = 44100,
 ) -> GeneratedWav:
     """Generate a mono WAV file for any engine.
@@ -362,6 +365,9 @@ def generate_wav(
             guidance_scale=float(stable_audio_guidance_scale),
             sampler=(str(stable_audio_sampler) if stable_audio_sampler else None),
             hf_token=(str(stable_audio_hf_token).strip() if stable_audio_hf_token else None),
+            lora_path=(str(stable_audio_lora_path).strip() if stable_audio_lora_path else None),
+            lora_scale=float(stable_audio_lora_scale),
+            lora_trigger=(str(stable_audio_lora_trigger).strip() if stable_audio_lora_trigger else None),
         )
         audio, sr = generate_audio(sp)
         if postprocess_fn is not None:
@@ -375,6 +381,9 @@ def generate_wav(
             "stable_audio_guidance_scale": float(sp.guidance_scale),
             "stable_audio_sampler": (str(sp.sampler) if sp.sampler else None),
             "stable_audio_negative_prompt": (str(sp.negative_prompt) if sp.negative_prompt else None),
+            "stable_audio_lora_path": (str(sp.lora_path) if sp.lora_path else None),
+            "stable_audio_lora_scale": (float(sp.lora_scale) if sp.lora_path else None),
+            "stable_audio_lora_trigger": (str(sp.lora_trigger) if sp.lora_trigger else None),
         }
         return GeneratedWav(wav_path=out_wav, post_info=post_info, sources=sources, credits_extra=credits_extra)
 

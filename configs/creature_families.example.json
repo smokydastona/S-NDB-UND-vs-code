@@ -1,0 +1,8 @@
+{
+  "example_ghoul": {
+    "lora_path": "lora/example_ghoul.safetensors",
+    "trigger": "ghoul",
+    "scale": 0.8,
+    "negative_prompt": "music, singing, speech, vocals"
+  }
+}

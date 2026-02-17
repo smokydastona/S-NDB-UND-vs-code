@@ -77,6 +77,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="For engine=stable_audio_open: sampler/scheduler (default auto).",
     )
 
+    # Creature-family fine-tuning (LoRA) for Stable Audio Open (inference-time loading).
+    p.add_argument(
+        "--creature-family",
+        default=None,
+        help=(
+            "Optional creature family key. Loads LoRA settings from library/creature_families.json and "
+            "applies them to engine=stable_audio_open."
+        ),
+    )
+    p.add_argument(
+        "--stable-audio-lora-path",
+        default=None,
+        help="For engine=stable_audio_open: path to LoRA weights (.safetensors / diffusers format).",
+    )
+    p.add_argument(
+        "--stable-audio-lora-scale",
+        type=float,
+        default=None,
+        help="For engine=stable_audio_open: LoRA scale/strength (default 1.0, or family default if set).",
+    )
+    p.add_argument(
+        "--stable-audio-lora-trigger",
+        default=None,
+        help="For engine=stable_audio_open: optional trigger token/phrase appended to the prompt.",
+    )
+
     # Diffusers multi-band mode (runs multiple generations and recombines bands).
     p.add_argument(
         "--diffusers-multiband",
@@ -832,6 +858,24 @@ def main(argv: list[str] | None = None) -> int:
         if variation > 0.0:
             layered_micro = float(np.clip(layered_micro + 0.60 * variation, 0.0, 1.0))
 
+        stable_audio_lora_path = args.stable_audio_lora_path
+        stable_audio_lora_scale: float = float(args.stable_audio_lora_scale) if args.stable_audio_lora_scale is not None else 1.0
+        stable_audio_lora_trigger = args.stable_audio_lora_trigger
+
+        if args.creature_family:
+            from .creature_families import apply_trigger, resolve_creature_family
+
+            fam = resolve_creature_family(str(args.creature_family))
+            # Only apply to stable_audio_open (for now). We still allow other engines to run unchanged.
+            stable_audio_lora_path = stable_audio_lora_path or fam.lora_path
+            if args.stable_audio_lora_scale is None:
+                stable_audio_lora_scale = float(fam.scale)
+            stable_audio_lora_trigger = stable_audio_lora_trigger or fam.trigger
+            if args.engine == "stable_audio_open" and fam.negative_prompt and not args.stable_audio_negative_prompt:
+                args.stable_audio_negative_prompt = fam.negative_prompt
+            if args.engine == "stable_audio_open" and stable_audio_lora_trigger:
+                prompt2 = apply_trigger(prompt2, stable_audio_lora_trigger)
+
         return generate_wav(
             args.engine,
             prompt=prompt2,
@@ -852,6 +896,9 @@ def main(argv: list[str] | None = None) -> int:
             stable_audio_guidance_scale=float(args.stable_audio_guidance_scale),
             stable_audio_sampler=(None if str(getattr(args, "stable_audio_sampler", "auto")).strip().lower() in {"", "auto", "default"} else str(getattr(args, "stable_audio_sampler"))),
             stable_audio_hf_token=(args.hf_token or None),
+            stable_audio_lora_path=(stable_audio_lora_path or None),
+            stable_audio_lora_scale=float(stable_audio_lora_scale),
+            stable_audio_lora_trigger=(stable_audio_lora_trigger or None),
             diffusers_multiband=bool(args.diffusers_multiband),
             diffusers_multiband_mode=str(args.diffusers_mb_mode or "auto"),
             diffusers_multiband_low_hz=float(args.diffusers_mb_low_hz),

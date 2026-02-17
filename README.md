@@ -197,6 +197,29 @@ python -m soundgen.generate --engine stable_audio_open --stable-audio-sampler eu
 python -m soundgen.generate --engine stable_audio_open --candidates 4 --stable-audio-steps 100 --stable-audio-guidance-scale 7 --prompt "metallic ui confirm" --seconds 1.2 --seed 42 --post --out outputs\ui_confirm.wav
 ```
 
+### Creature families (LoRA fine-tuning workflow)
+
+S-NDB-UND supports loading **LoRA adapters at inference time** for `stable_audio_open`.
+
+- Put your family definitions in `configs/creature_families.json` (project config), or `library/creature_families.json` (local override).
+- Start from `configs/creature_families.example.json`.
+
+Inference example:
+
+```powershell
+# Uses the family definition (lora_path/trigger/scale/negative_prompt)
+python -m soundgen.generate --engine stable_audio_open --creature-family example_ghoul --prompt "creature screech" --seconds 1.6 --seed 123 --post --out outputs\ghoul_screech.wav
+
+# Or set LoRA directly (no config file)
+python -m soundgen.generate --engine stable_audio_open --stable-audio-lora-path lora\ghoul.safetensors --stable-audio-lora-scale 0.8 --stable-audio-lora-trigger ghoul --prompt "creature idle growl" --seconds 2.5 --seed 5 --post --out outputs\ghoul_idle.wav
+```
+
+Dataset export (for training with external LoRA trainers):
+
+```powershell
+python -m soundgen.creature_finetune prepare --in outputs --out datasets\ghoul_family --family ghoul --copy-audio --convert-to-wav
+```
+
 ## Minecraft mob soundset generator
 
 Generate a full set of mob sounds (hurt/death/ambient/step) directly into a pack:
