@@ -81,6 +81,8 @@ def _generate(
     reverb_mix: float,
     reverb_time: float,
 
+    loop_clean: bool,
+
     export_minecraft: bool,
     mc_target: str,
     pack_root: str,
@@ -353,6 +355,8 @@ def _generate(
             reverb_mix=float(rev_m),
             reverb_time_s=float(rev_t),
             prompt_hint=str(prompt),
+            loop_clean=bool(loop_clean),
+            loop_crossfade_ms=100,
         )
         if hints is not None:
             # Apply only the hints we support for post-processing.
@@ -594,6 +598,8 @@ def _generate(
             credits["pro_preset"] = str(pro_preset)
         if polish_profile != "off":
             credits["polish_profile"] = str(polish_profile)
+        if loop_clean:
+            credits["loop_clean"] = True
         if generated.sources:
             credits["sources"] = list(generated.sources)
 
@@ -783,6 +789,7 @@ def main() -> None:
 
         post = gr.Checkbox(value=True, label="Post-process (trim/fade/normalize/EQ)")
         polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
+        loop_clean = gr.Checkbox(value=False, label="Loop-clean ambience (100ms seam crossfade)")
 
         gr.Markdown("## Minecraft export (1.20.1)")
         export_minecraft = gr.Checkbox(value=False, label="Export to Minecraft (.ogg + sounds.json)")
@@ -873,6 +880,8 @@ def main() -> None:
                 reverb_preset,
                 reverb_mix,
                 reverb_time,
+
+                loop_clean,
 
                 export_minecraft,
                 mc_target,

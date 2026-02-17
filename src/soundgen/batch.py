@@ -90,6 +90,8 @@ def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: 
         compressor_threshold_db=(float(comp_thr) if comp_thr is not None else None),
         compressor_makeup_db=float(comp_makeup),
         limiter_ceiling_db=(float(limiter) if limiter is not None else None),
+        loop_clean=bool(getattr(args, "loop", False)),
+        loop_crossfade_ms=int(getattr(args, "loop_crossfade_ms", 100)),
     )
 
 
@@ -165,6 +167,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reverb", choices=["off", "room", "cave", "forest", "nether"], default="off")
     p.add_argument("--reverb-mix", type=float, default=0.0)
     p.add_argument("--reverb-time", type=float, default=1.0)
+
+    p.add_argument(
+        "--loop",
+        action="store_true",
+        help="Loop-clean output (ambience): blend the end into the start to reduce seam clicks.",
+    )
+    p.add_argument(
+        "--loop-crossfade-ms",
+        type=int,
+        default=100,
+        help="Loop-clean crossfade window in milliseconds (default 100).",
+    )
 
     # Sample library engine
     p.add_argument(

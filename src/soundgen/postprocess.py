@@ -69,6 +69,10 @@ class PostProcessParams:
     compressor_makeup_db: float = 0.0
     limiter_ceiling_db: Optional[float] = None  # e.g. -1.0
 
+    # Loop cleaning (for ambience): blend the end into the start to reduce seam clicks.
+    loop_clean: bool = False
+    loop_crossfade_ms: int = 100
+
 
 @dataclass(frozen=True)
 class PostProcessReport:
@@ -560,6 +564,49 @@ def _spectral_denoise(x: np.ndarray, sr: int, *, strength: float) -> np.ndarray:
     return y.astype(np.float32, copy=False)
 
 
+def _apply_loop_clean(y: np.ndarray, sr: int, *, crossfade_ms: int) -> np.ndarray:
+    """Reduce seam clicks when looping by blending the last window into the first.
+
+    This is intentionally simple and robust for ambience: it keeps length the same and
+    forces y[-1] == y[0] after processing.
+    """
+
+    if y.size == 0:
+        return y.astype(np.float32, copy=False)
+
+    ms = int(max(1, int(crossfade_ms)))
+    n = int(round(float(sr) * (float(ms) / 1000.0)))
+    if n < 2:
+        y2 = y.astype(np.float32, copy=False)
+        if y2.size >= 2:
+            y2[-1] = y2[0]
+        return y2
+
+    # Keep the window reasonable.
+    n = min(n, max(2, y.size // 4))
+    if y.size < (n + 2):
+        # Too short to do anything meaningful.
+        y2 = y.astype(np.float32, copy=False)
+        if y2.size >= 2:
+            y2[-1] = y2[0]
+        return y2
+
+    head = y[:n].astype(np.float32, copy=False)
+    tail = y[-n:].astype(np.float32, copy=False)
+    fade = np.linspace(0.0, 1.0, n, dtype=np.float32)
+
+    # Blend tail into a time-reversed view of the head so that the very last sample
+    # fades toward the very first sample (y[0]), making the loop boundary continuous.
+    head_rev = head[::-1]
+    tail2 = (tail * (1.0 - fade) + head_rev * fade).astype(np.float32, copy=False)
+
+    y2 = y.copy()
+    y2[-n:] = tail2
+    # Enforce exact continuity at the boundary.
+    y2[-1] = y2[0]
+    return y2.astype(np.float32, copy=False)
+
+
 def post_process_audio(x: np.ndarray, sr: int, params: PostProcessParams) -> tuple[np.ndarray, PostProcessReport]:
     """Apply a Minecraft-friendly post chain.
 
@@ -631,6 +678,10 @@ def post_process_audio(x: np.ndarray, sr: int, params: PostProcessParams) -> tup
 
     # Optional reverb (before normalization so overall loudness stays consistent)
     y = _apply_reverb(y, sr, params)
+
+    # Optional loop cleaning (before normalization so output loudness stays consistent)
+    if bool(getattr(params, "loop_clean", False)):
+        y = _apply_loop_clean(y, sr, crossfade_ms=int(getattr(params, "loop_crossfade_ms", 100)))
 
     # Loudness-ish normalization (RMS target) + safety peak cap.
     if params.normalize_rms_db is not None:

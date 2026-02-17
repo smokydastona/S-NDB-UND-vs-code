@@ -93,12 +93,14 @@ POLISH_PROFILES: dict[str, PolishProfile] = {
     ),
     "ambience_loop_ready": PolishProfile(
         title="Ambience Loop-ready",
-        description="Loop-friendly ambience: no trim + longer fades to reduce boundary clicks.",
+        description="Loop-friendly ambience: no trim + longer fades + loop-clean seam crossfade.",
         enable_post=True,
         enable_polish=True,
         args={
             "no_trim": True,
             "fade_ms": 90,
+            "loop": True,
+            "loop_crossfade_ms": 100,
             "normalize_rms_db": -23.0,
             "normalize_peak_db": -1.5,
             "highpass_hz": 30.0,

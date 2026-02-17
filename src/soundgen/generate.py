@@ -219,6 +219,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-padding-ms", type=int, default=30, help="Padding kept around trimmed audio.")
     p.add_argument("--fade-ms", type=int, default=8, help="Fade in/out duration to prevent clicks.")
     p.add_argument(
+        "--loop",
+        action="store_true",
+        help="Loop-clean output (ambience): blend the end into the start to reduce seam clicks.",
+    )
+    p.add_argument(
+        "--loop-crossfade-ms",
+        type=int,
+        default=100,
+        help="Loop-clean crossfade window in milliseconds (default 100).",
+    )
+    p.add_argument(
         "--normalize-rms-db",
         type=float,
         default=-18.0,
@@ -576,6 +587,8 @@ def main(argv: list[str] | None = None) -> int:
             compressor_release_ms=(90.0 if args.polish else 80.0),
             compressor_makeup_db=float(comp_makeup),
             limiter_ceiling_db=(float(limiter) if limiter is not None else None),
+            loop_clean=bool(getattr(args, "loop", False)),
+            loop_crossfade_ms=int(getattr(args, "loop_crossfade_ms", 100)),
         )
 
     def _qa_info(audio: np.ndarray, sr: int) -> str:

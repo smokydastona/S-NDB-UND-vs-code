@@ -80,6 +80,9 @@ python -m soundgen.generate --engine layered --polish-profile foley_punchy --pro
 
 # Ambience: smooth bed with loop-friendly fades
 python -m soundgen.generate --engine diffusers --polish-profile ambience_loop_ready --prompt "cave ambience drone" --seconds 8 --seed 9 --post --out outputs\cave_loopy.wav
+
+# If you want to force loop seam cleanup without a profile:
+python -m soundgen.generate --engine synth --prompt "wind bed" --seconds 8 --post --loop --loop-crossfade-ms 100 --out outputs\wind_loop.wav
 ```
 
 In the Web UI (`python -m soundgen.web`), use the **polish profile** dropdown next to the post/polish toggles.

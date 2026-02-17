@@ -100,6 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reverb-mix", type=float, default=0.0)
     p.add_argument("--reverb-time", type=float, default=1.0)
 
+    p.add_argument(
+        "--loop",
+        action="store_true",
+        help="Loop-clean output (ambience): blend the end into the start to reduce seam clicks.",
+    )
+    p.add_argument(
+        "--loop-crossfade-ms",
+        type=int,
+        default=100,
+        help="Loop-clean crossfade window in milliseconds (default 100).",
+    )
+
     # Minecraft export settings
     p.add_argument("--pack-root", default="resourcepack")
     p.add_argument("--mc-target", choices=["resourcepack", "forge"], default="resourcepack")
