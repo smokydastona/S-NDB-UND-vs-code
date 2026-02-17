@@ -89,7 +89,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mb-comp-ratio", type=float, default=2.0)
 
     p.add_argument("--creature-size", type=float, default=0.0, help="-1..+1")
-    p.add_argument("--formant-shift", type=float, default=0.0)
+    p.add_argument("--formant-shift", type=float, default=1.0)
+
+    # Pro Mode overrides (optional)
+    p.add_argument("--denoise-amount", type=float, default=None, help="Override denoise amount 0..1 (omit to use defaults).")
+    p.add_argument("--transient-attack", type=float, default=None, help="Override transient attack emphasis -1..+1 (omit to use defaults).")
+    p.add_argument("--transient-sustain", type=float, default=None, help="Override transient sustain emphasis -1..+1 (omit to use defaults).")
+    p.add_argument("--exciter-amount", type=float, default=None, help="Override exciter amount 0..1 (omit to use defaults).")
+    p.add_argument("--compressor-attack-ms", type=float, default=None, help="Override compressor attack (ms) for polish mode.")
+    p.add_argument("--compressor-release-ms", type=float, default=None, help="Override compressor release (ms) for polish mode.")
 
     p.add_argument("--texture-preset", choices=["off", "auto", "chitter", "rasp", "buzz", "screech"], default="off")
     p.add_argument("--texture-amount", type=float, default=0.0)

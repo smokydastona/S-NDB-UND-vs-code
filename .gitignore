@@ -33,6 +33,16 @@ pre_gen_sound/
 # Minecraft pack output (default)
 resourcepack/
 
+# In-repo demo sound pack (intentionally versioned)
+!soundpack_v1/
+!soundpack_v1/**
+!soundpack_v1/**/*.wav
+!soundpack_v1/**/*.ogg
+!soundpack_v1/**/*.json
+!soundpack_v1/**/*.md
+!soundpack_v1/resourcepack/
+!soundpack_v1/resourcepack/**
+
 # Optional local tools
 tools/rfxgen/
 

@@ -1,0 +1,19 @@
+{
+  "engine": "rfxgen",
+  "prompt": "jump, cartoony whoop, short",
+  "emotion": "neutral",
+  "intensity": 0.0,
+  "variation": 0.0,
+  "pitch_contour": "flat",
+  "sound_path": "soundpack_v1/movement/jump",
+  "rfxgen_path": "tools\\rfxgen\\rfxgen.exe",
+  "pro_preset": "off",
+  "polish_profile": "ui_clean",
+  "loop_clean": false,
+  "loop_crossfade_ms": 100,
+  "soundpack_id": "soundpack_v1",
+  "soundpack_version": "1.0.0",
+  "item_id": "movement_jump",
+  "namespace": "soundgen",
+  "event": "soundpack_v1.movement.jump"
+}

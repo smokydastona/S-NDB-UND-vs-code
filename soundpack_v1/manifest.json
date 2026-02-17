@@ -1,0 +1,140 @@
+{
+  "soundpack_id": "soundpack_v1",
+  "title": "Sound Generator — Demo Sound Pack v1",
+  "version": "1.0.0",
+  "namespace": "soundgen",
+  "description": "A small, curated demo pack built with soundgen. Includes WAV + Minecraft-ready OGG + per-file credits JSON.",
+  "defaults": {
+    "engine": "rfxgen",
+    "seconds": 2.5,
+    "post": true,
+    "polish": true,
+    "loop": false,
+    "ogg_quality": 5,
+    "mc_sample_rate": 44100,
+    "mc_channels": 1,
+    "rfxgen_path": "tools/rfxgen/rfxgen.exe"
+  },
+  "items": [
+    {
+      "id": "ui_click_soft",
+      "event": "soundpack_v1.ui.click_soft",
+      "sound_path": "soundpack_v1/ui/click_soft",
+      "subtitle": "UI click",
+      "prompt": "soft UI click, short and clean",
+      "seconds": 0.6,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "ui_click_hard",
+      "event": "soundpack_v1.ui.click_hard",
+      "sound_path": "soundpack_v1/ui/click_hard",
+      "subtitle": "UI click",
+      "prompt": "sharp UI click, snappy, bright",
+      "seconds": 0.5,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "ui_coin_pickup",
+      "event": "soundpack_v1.ui.coin_pickup",
+      "sound_path": "soundpack_v1/ui/coin_pickup",
+      "subtitle": "Coin pickup",
+      "prompt": "coin pickup, bright chime, game UI",
+      "seconds": 1.0,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "ui_powerup_chime",
+      "event": "soundpack_v1.ui.powerup_chime",
+      "sound_path": "soundpack_v1/ui/powerup_chime",
+      "subtitle": "Powerup",
+      "prompt": "powerup, celebratory chime, sparkling",
+      "seconds": 1.6,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "weapon_laser_zap",
+      "event": "soundpack_v1.weapon.laser_zap",
+      "sound_path": "soundpack_v1/weapon/laser_zap",
+      "subtitle": "Laser",
+      "prompt": "laser zap, sci-fi blaster, short",
+      "seconds": 1.0,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "weapon_laser_charge",
+      "event": "soundpack_v1.weapon.laser_charge",
+      "sound_path": "soundpack_v1/weapon/laser_charge",
+      "subtitle": "Charge",
+      "prompt": "laser charge up, rising energy whine",
+      "seconds": 2.0,
+      "pro_preset": "env.magical_hum",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "impact_punch_light",
+      "event": "soundpack_v1.impact.punch_light",
+      "sound_path": "soundpack_v1/impact/punch_light",
+      "subtitle": "Impact",
+      "prompt": "light punch impact, tight, no tail",
+      "seconds": 0.9,
+      "pro_preset": "foley.flesh_impact",
+      "polish_profile": "impact_soft_mid"
+    },
+    {
+      "id": "impact_punch_heavy",
+      "event": "soundpack_v1.impact.punch_heavy",
+      "sound_path": "soundpack_v1/impact/punch_heavy",
+      "subtitle": "Impact",
+      "prompt": "heavy punch impact, hard transient, body",
+      "seconds": 1.2,
+      "pro_preset": "foley.flesh_impact",
+      "polish_profile": "impact_hard_punch"
+    },
+    {
+      "id": "explosion_small_boom",
+      "event": "soundpack_v1.explosion.small_boom",
+      "sound_path": "soundpack_v1/explosion/small_boom",
+      "subtitle": "Explosion",
+      "prompt": "small explosion, punchy, game sfx",
+      "seconds": 1.8,
+      "pro_preset": "off",
+      "polish_profile": "impact_hard_punch"
+    },
+    {
+      "id": "explosion_big_boom",
+      "event": "soundpack_v1.explosion.big_boom",
+      "sound_path": "soundpack_v1/explosion/big_boom",
+      "subtitle": "Explosion",
+      "prompt": "big explosion, low end, cinematic",
+      "seconds": 2.8,
+      "pro_preset": "off",
+      "polish_profile": "impact_hard_punch"
+    },
+    {
+      "id": "movement_jump",
+      "event": "soundpack_v1.movement.jump",
+      "sound_path": "soundpack_v1/movement/jump",
+      "subtitle": "Jump",
+      "prompt": "jump, cartoony whoop, short",
+      "seconds": 1.0,
+      "pro_preset": "off",
+      "polish_profile": "ui_clean"
+    },
+    {
+      "id": "whoosh_fast_swing",
+      "event": "soundpack_v1.whoosh.fast_swing",
+      "sound_path": "soundpack_v1/whoosh/fast_swing",
+      "subtitle": "Whoosh",
+      "prompt": "fast whoosh swing, airy, tight tail",
+      "seconds": 1.3,
+      "pro_preset": "off",
+      "polish_profile": "foley_punchy"
+    }
+  ]
+}

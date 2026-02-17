@@ -23,8 +23,13 @@ class PostProcessParams:
 
     # "Polish Mode" DSP (off by default)
     denoise_strength: float = 0.0  # 0..1 (gentle spectral subtraction)
-    transient_amount: float = 0.0  # -1..+1 (high-band transient emphasis)
+    transient_amount: float = 0.0  # -1..+1 (attack emphasis)
+    transient_sustain: float = 0.0  # -1..+1 (sustain emphasis)
     transient_split_hz: float = 1200.0
+
+    # Harmonic enhancer / exciter (off by default)
+    exciter_amount: float = 0.0  # 0..1
+    exciter_cutoff_hz: float = 2500.0
 
     # Multi-band cleanup / dynamics (off by default)
     multiband: bool = False
@@ -176,23 +181,75 @@ def _soft_limit(x: np.ndarray, *, ceiling_amp: float) -> np.ndarray:
 
 
 def _transient_shaper(x: np.ndarray, sr: int, *, amount: float, split_hz: float = 1200.0) -> np.ndarray:
-    """Simple transient shaping by boosting/cutting the high band."""
+    """Attack/sustain transient shaping focused on the high band.
 
-    a = float(np.clip(amount, -1.0, 1.0))
-    if x.size == 0 or abs(a) < 1e-6:
+    amount controls attack emphasis. Sustain is controlled separately via
+    PostProcessParams.transient_sustain.
+    """
+
+    return _transient_shaper_attack_sustain(x, sr, attack=float(amount), sustain=0.0, split_hz=float(split_hz))
+
+
+def _transient_shaper_attack_sustain(
+    x: np.ndarray,
+    sr: int,
+    *,
+    attack: float,
+    sustain: float,
+    split_hz: float = 1200.0,
+) -> np.ndarray:
+    a = float(np.clip(float(attack), -1.0, 1.0))
+    s = float(np.clip(float(sustain), -1.0, 1.0))
+    if x.size == 0 or (abs(a) < 1e-6 and abs(s) < 1e-6):
         return x.astype(np.float32, copy=False)
 
-    # Split at ~1.2kHz by default. High band tends to carry attack/click.
     split = float(np.clip(float(split_hz), 150.0, 0.45 * float(sr)))
     low = _butter_filter(x, sr, kind="lowpass", cutoff_hz=split, order=2)
     high = (x - low).astype(np.float32, copy=False)
 
-    if a > 0:
-        g = 1.0 + 1.8 * a
-    else:
-        g = 1.0 / (1.0 + 1.8 * (-a))
+    env = np.abs(high).astype(np.float32, copy=False)
+    # Fast vs slow envelope to estimate transient vs sustain.
+    fast_tau_s = 0.006
+    slow_tau_s = 0.080
+    a_fast = float(np.exp(-1.0 / max(1.0, float(sr) * fast_tau_s)))
+    a_slow = float(np.exp(-1.0 / max(1.0, float(sr) * slow_tau_s)))
+    env_fast = signal.lfilter([1.0 - a_fast], [1.0, -a_fast], env)
+    env_slow = signal.lfilter([1.0 - a_slow], [1.0, -a_slow], env)
 
-    y = (low + (high * float(g))).astype(np.float32, copy=False)
+    transient = np.maximum(env_fast - env_slow, 0.0).astype(np.float32, copy=False)
+    tmax = float(np.max(transient)) if transient.size else 0.0
+    if tmax <= 1e-8:
+        t = np.zeros_like(transient, dtype=np.float32)
+    else:
+        t = (transient / tmax).astype(np.float32, copy=False)
+
+    # Gain curve: emphasize attack on transient regions, sustain elsewhere.
+    attack_gain = 1.0 + 1.6 * a
+    sustain_gain = 1.0 + 0.9 * s
+    g = (sustain_gain + (attack_gain - sustain_gain) * t).astype(np.float32, copy=False)
+    g = np.clip(g, 0.1, 3.0, out=g)
+
+    y = (low + (high * g)).astype(np.float32, copy=False)
+    return y
+
+
+def _apply_exciter(x: np.ndarray, sr: int, *, amount: float, cutoff_hz: float) -> np.ndarray:
+    """Subtle harmonic exciter by saturating an upper band and mixing back."""
+
+    amt = float(np.clip(float(amount), 0.0, 1.0))
+    if x.size == 0 or amt <= 1e-6:
+        return x.astype(np.float32, copy=False)
+
+    cutoff = float(np.clip(float(cutoff_hz), 600.0, 0.45 * float(sr)))
+    band = _butter_filter(x, sr, kind="highpass", cutoff_hz=cutoff, order=2)
+
+    drive = 1.5 + 6.0 * amt
+    sat = np.tanh(band * drive).astype(np.float32, copy=False)
+    # Normalize roughly so amt feels consistent.
+    sat = (sat / float(np.tanh(drive))).astype(np.float32, copy=False)
+
+    mix = 0.55 * amt
+    y = (x + (sat * mix)).astype(np.float32, copy=False)
     return y
 
 
@@ -658,8 +715,23 @@ def post_process_audio(x: np.ndarray, sr: int, params: PostProcessParams) -> tup
     y = _apply_texture_overlay(y, sr, params, prompt_hint=(params.prompt_hint or None))
 
     # Optional transient shaping
-    if float(params.transient_amount) != 0.0:
-        y = _transient_shaper(y, sr, amount=float(params.transient_amount), split_hz=float(params.transient_split_hz))
+    if float(params.transient_amount) != 0.0 or float(getattr(params, "transient_sustain", 0.0)) != 0.0:
+        y = _transient_shaper_attack_sustain(
+            y,
+            sr,
+            attack=float(params.transient_amount),
+            sustain=float(getattr(params, "transient_sustain", 0.0)),
+            split_hz=float(params.transient_split_hz),
+        )
+
+    # Optional exciter (before fade / dynamics)
+    if float(getattr(params, "exciter_amount", 0.0)) > 0.0:
+        y = _apply_exciter(
+            y,
+            sr,
+            amount=float(getattr(params, "exciter_amount", 0.0)),
+            cutoff_hz=float(getattr(params, "exciter_cutoff_hz", 2500.0)),
+        )
 
     # Fade to avoid clicks
     y = _apply_fade(y, sr, fade_ms=int(params.fade_ms))

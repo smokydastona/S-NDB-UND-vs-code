@@ -324,6 +324,44 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reverb-mix", type=float, default=0.0, help="Reverb wet mix (0..1).")
     p.add_argument("--reverb-time", type=float, default=1.2, help="Reverb tail time in seconds.")
 
+    # Pro Mode overrides (optional). If omitted, polish/conditioning selects conservative values.
+    p.add_argument(
+        "--denoise-amount",
+        type=float,
+        default=None,
+        help="Override spectral denoise amount 0..1 (omit to use profile/polish defaults).",
+    )
+    p.add_argument(
+        "--transient-attack",
+        type=float,
+        default=None,
+        help="Override transient shaper attack emphasis -1..+1 (omit to use profile/polish defaults).",
+    )
+    p.add_argument(
+        "--transient-sustain",
+        type=float,
+        default=None,
+        help="Override transient shaper sustain emphasis -1..+1 (omit to use profile/polish defaults).",
+    )
+    p.add_argument(
+        "--exciter-amount",
+        type=float,
+        default=None,
+        help="Override harmonic exciter amount 0..1 (omit to use profile defaults).",
+    )
+    p.add_argument(
+        "--compressor-attack-ms",
+        type=float,
+        default=None,
+        help="Override compressor attack (ms) for polish mode (omit to use defaults).",
+    )
+    p.add_argument(
+        "--compressor-release-ms",
+        type=float,
+        default=None,
+        help="Override compressor release (ms) for polish mode (omit to use defaults).",
+    )
+
     # Synth engine (DSP) controls
     p.add_argument("--synth-waveform", default="sine", help="synth waveform: sine|square|saw|triangle|noise")
     p.add_argument("--synth-freq", type=float, default=440.0, help="synth base frequency (Hz)")
@@ -510,6 +548,7 @@ def main(argv: list[str] | None = None) -> int:
         # Emotion/intensity nudges for polish defaults (only if user opted in via intensity > 0)
         denoise = (0.25 if args.polish else 0.0)
         transient = (0.25 if args.polish else 0.0)
+        transient_sustain = 0.0
         comp_thr = (-18.0 if args.polish else None)
         comp_makeup = (3.0 if args.polish else 0.0)
         limiter = (-1.0 if args.polish else None)
@@ -528,6 +567,24 @@ def main(argv: list[str] | None = None) -> int:
                 transient = float(np.clip(transient - 0.15, -1.0, 1.0))
             elif emotion == "scared":
                 transient = float(np.clip(transient + 0.10, -1.0, 1.0))
+
+        # Optional Pro Mode overrides (win over conditioning/polish defaults).
+        denoise_ovr = getattr(args, "denoise_amount", None)
+        if denoise_ovr is not None:
+            denoise = float(np.clip(float(denoise_ovr), 0.0, 1.0))
+
+        trans_attack_ovr = getattr(args, "transient_attack", None)
+        if trans_attack_ovr is not None:
+            transient = float(np.clip(float(trans_attack_ovr), -1.0, 1.0))
+
+        trans_sustain_ovr = getattr(args, "transient_sustain", None)
+        if trans_sustain_ovr is not None:
+            transient_sustain = float(np.clip(float(trans_sustain_ovr), -1.0, 1.0))
+
+        exciter = 0.0
+        exciter_ovr = getattr(args, "exciter_amount", None)
+        if exciter_ovr is not None:
+            exciter = float(np.clip(float(exciter_ovr), 0.0, 1.0))
 
         # Texture: if user didn't set explicit texture controls, let conditioning gently enable it.
         texture_preset = str(args.texture_preset)
@@ -557,7 +614,9 @@ def main(argv: list[str] | None = None) -> int:
             # Polish mode DSP (conservative defaults + conditioning)
             denoise_strength=float(denoise),
             transient_amount=float(transient),
+            transient_sustain=float(transient_sustain),
             transient_split_hz=1200.0,
+            exciter_amount=float(exciter),
             multiband=bool(args.multiband or (args.polish and intensity > 0.0)),
             multiband_low_hz=float(args.mb_low_hz),
             multiband_high_hz=float(args.mb_high_hz),
@@ -583,8 +642,8 @@ def main(argv: list[str] | None = None) -> int:
             prompt_hint=(str(prompt_hint) if prompt_hint else None),
             compressor_threshold_db=(float(comp_thr) if comp_thr is not None else None),
             compressor_ratio=(4.0 if args.polish else 4.0),
-            compressor_attack_ms=(5.0 if args.polish else 5.0),
-            compressor_release_ms=(90.0 if args.polish else 80.0),
+            compressor_attack_ms=float(getattr(args, "compressor_attack_ms", 5.0) if getattr(args, "compressor_attack_ms", None) is not None else (5.0 if args.polish else 5.0)),
+            compressor_release_ms=float(getattr(args, "compressor_release_ms", 90.0) if getattr(args, "compressor_release_ms", None) is not None else (90.0 if args.polish else 80.0)),
             compressor_makeup_db=float(comp_makeup),
             limiter_ceiling_db=(float(limiter) if limiter is not None else None),
             loop_clean=bool(getattr(args, "loop", False)),
@@ -660,10 +719,10 @@ def main(argv: list[str] | None = None) -> int:
             "sound_path": str(sound_path),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
-        if getattr(args, "pro_preset", "off") != "off":
-            data["pro_preset"] = str(args.pro_preset)
-        if getattr(args, "polish_profile", "off") != "off":
-            data["polish_profile"] = str(args.polish_profile)
+        data["pro_preset"] = str(getattr(args, "pro_preset", "off"))
+        data["polish_profile"] = str(getattr(args, "polish_profile", "off"))
+        data["loop_clean"] = bool(getattr(args, "loop", False))
+        data["loop_crossfade_ms"] = int(getattr(args, "loop_crossfade_ms", 100))
         if generated.sources:
             data["sources"] = list(generated.sources)
 

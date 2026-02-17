@@ -1,0 +1,134 @@
+{
+  "soundpack_v1.ui.click_soft": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/ui/click_soft",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.ui.click_soft"
+  },
+  "soundpack_v1.ui.click_hard": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/ui/click_hard",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.ui.click_hard"
+  },
+  "soundpack_v1.ui.coin_pickup": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/ui/coin_pickup",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.ui.coin_pickup"
+  },
+  "soundpack_v1.ui.powerup_chime": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/ui/powerup_chime",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.ui.powerup_chime"
+  },
+  "soundpack_v1.weapon.laser_zap": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/weapon/laser_zap",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.weapon.laser_zap"
+  },
+  "soundpack_v1.weapon.laser_charge": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/weapon/laser_charge",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.weapon.laser_charge"
+  },
+  "soundpack_v1.impact.punch_light": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/impact/punch_light",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.impact.punch_light"
+  },
+  "soundpack_v1.impact.punch_heavy": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/impact/punch_heavy",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.impact.punch_heavy"
+  },
+  "soundpack_v1.explosion.small_boom": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/explosion/small_boom",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.explosion.small_boom"
+  },
+  "soundpack_v1.explosion.big_boom": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/explosion/big_boom",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.explosion.big_boom"
+  },
+  "soundpack_v1.movement.jump": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/movement/jump",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.movement.jump"
+  },
+  "soundpack_v1.whoosh.fast_swing": {
+    "sounds": [
+      {
+        "name": "soundpack_v1/whoosh/fast_swing",
+        "weight": 1,
+        "volume": 1.0,
+        "pitch": 1.0
+      }
+    ],
+    "subtitle": "subtitles.soundgen.soundpack_v1.whoosh.fast_swing"
+  }
+}

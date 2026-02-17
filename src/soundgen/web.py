@@ -15,7 +15,7 @@ from .postprocess import PostProcessParams, post_process_audio
 from .qa import compute_metrics, detect_long_tail
 from .qa_viz import spectrogram_image, waveform_image
 from .controls import map_prompt_to_controls
-from .pro_presets import PRO_PRESETS, pro_preset_keys
+from .pro_presets import PRO_PRESETS, get_pro_preset, pro_preset_keys, pro_preset_recommended_profile
 from .polish_profiles import POLISH_PROFILES, polish_profile_keys
 
 
@@ -81,6 +81,13 @@ def _generate(
     reverb_mix: float,
     reverb_time: float,
 
+    denoise_amount: float | None,
+    transient_attack: float | None,
+    transient_sustain: float | None,
+    exciter_amount: float | None,
+    compressor_attack_ms: float | None,
+    compressor_release_ms: float | None,
+
     loop_clean: bool,
 
     export_minecraft: bool,
@@ -109,7 +116,7 @@ def _generate(
     # Apply pro preset conservatively (only if fields are at UI defaults).
     preset_key = str(pro_preset or "off").strip()
     if preset_key and preset_key.lower() != "off":
-        preset_obj = PRO_PRESETS.get(preset_key)
+        preset_obj = get_pro_preset(preset_key)
         if preset_obj is not None:
             # Prompt augmentation for AI/sample selection engines.
             eng = str(engine or "").strip().lower()
@@ -149,6 +156,12 @@ def _generate(
                 "reverb_preset": "off",
                 "reverb_mix": 0.0,
                 "reverb_time": 1.2,
+                "denoise_amount": None,
+                "transient_attack": None,
+                "transient_sustain": None,
+                "exciter_amount": None,
+                "compressor_attack_ms": None,
+                "compressor_release_ms": None,
             }
 
             state = {
@@ -176,6 +189,12 @@ def _generate(
                 "reverb_preset": reverb_preset,
                 "reverb_mix": reverb_mix,
                 "reverb_time": reverb_time,
+                "denoise_amount": denoise_amount,
+                "transient_attack": transient_attack,
+                "transient_sustain": transient_sustain,
+                "exciter_amount": exciter_amount,
+                "compressor_attack_ms": compressor_attack_ms,
+                "compressor_release_ms": compressor_release_ms,
             }
 
             for dest, value in (preset_obj.args or {}).items():
@@ -207,6 +226,12 @@ def _generate(
             reverb_preset = str(state["reverb_preset"])
             reverb_mix = float(state["reverb_mix"])
             reverb_time = float(state["reverb_time"])
+            denoise_amount = state["denoise_amount"]
+            transient_attack = state["transient_attack"]
+            transient_sustain = state["transient_sustain"]
+            exciter_amount = state["exciter_amount"]
+            compressor_attack_ms = state["compressor_attack_ms"]
+            compressor_release_ms = state["compressor_release_ms"]
 
     # Apply named polish profile conservatively (only if fields are at UI defaults).
     profile_key = str(polish_profile or "off").strip()
@@ -233,6 +258,12 @@ def _generate(
                 "reverb_preset": "off",
                 "reverb_mix": 0.0,
                 "reverb_time": 1.2,
+                "denoise_amount": None,
+                "transient_attack": None,
+                "transient_sustain": None,
+                "exciter_amount": None,
+                "compressor_attack_ms": None,
+                "compressor_release_ms": None,
             }
 
             state = {
@@ -255,6 +286,12 @@ def _generate(
                 "reverb_preset": reverb_preset,
                 "reverb_mix": reverb_mix,
                 "reverb_time": reverb_time,
+                "denoise_amount": denoise_amount,
+                "transient_attack": transient_attack,
+                "transient_sustain": transient_sustain,
+                "exciter_amount": exciter_amount,
+                "compressor_attack_ms": compressor_attack_ms,
+                "compressor_release_ms": compressor_release_ms,
             }
 
             if bool(prof.enable_post) and state["post"] == defaults["post"]:
@@ -289,6 +326,12 @@ def _generate(
             reverb_preset = str(state["reverb_preset"])
             reverb_mix = float(state["reverb_mix"])
             reverb_time = float(state["reverb_time"])
+            denoise_amount = state["denoise_amount"]
+            transient_attack = state["transient_attack"]
+            transient_sustain = state["transient_sustain"]
+            exciter_amount = state["exciter_amount"]
+            compressor_attack_ms = state["compressor_attack_ms"]
+            compressor_release_ms = state["compressor_release_ms"]
 
     def _pp_params() -> PostProcessParams:
         # Conditioning
@@ -309,6 +352,9 @@ def _generate(
             comp_makeup = 3.0
             limiter = -1.0
 
+        trans_sus = 0.0
+        exc = 0.0
+
         if inten > 0.0:
             trans = float(np.clip(trans + 0.35 * inten, -1.0, 1.0))
             comp_thr = float(-18.0 - 8.0 * inten)
@@ -320,6 +366,16 @@ def _generate(
                 trans = float(np.clip(trans - 0.15, -1.0, 1.0))
             elif emo == "scared":
                 trans = float(np.clip(trans + 0.10, -1.0, 1.0))
+
+        # Optional Pro Mode overrides (win over conditioning/polish defaults).
+        if denoise_amount is not None:
+            denoise = float(np.clip(float(denoise_amount), 0.0, 1.0))
+        if transient_attack is not None:
+            trans = float(np.clip(float(transient_attack), -1.0, 1.0))
+        if transient_sustain is not None:
+            trans_sus = float(np.clip(float(transient_sustain), -1.0, 1.0))
+        if exciter_amount is not None:
+            exc = float(np.clip(float(exciter_amount), 0.0, 1.0))
 
         tex_p = str(texture_preset or "off")
         tex_a = float(texture_amount)
@@ -337,6 +393,7 @@ def _generate(
         params = PostProcessParams(
             denoise_strength=float(denoise),
             transient_amount=float(trans),
+            transient_sustain=float(trans_sus),
             multiband=bool(multiband or (polish and inten > 0.0)),
             multiband_low_hz=float(mb_low_hz),
             multiband_high_hz=float(mb_high_hz),
@@ -357,6 +414,7 @@ def _generate(
             prompt_hint=str(prompt),
             loop_clean=bool(loop_clean),
             loop_crossfade_ms=100,
+            exciter_amount=float(exc),
         )
         if hints is not None:
             # Apply only the hints we support for post-processing.
@@ -369,12 +427,14 @@ def _generate(
 
         # Polish mode DSP (conservative defaults)
         if polish:
+            atk = float(compressor_attack_ms) if compressor_attack_ms is not None else 5.0
+            rel = float(compressor_release_ms) if compressor_release_ms is not None else 90.0
             params = replace(
                 params,
                 compressor_threshold_db=-18.0,
                 compressor_ratio=4.0,
-                compressor_attack_ms=5.0,
-                compressor_release_ms=90.0,
+                compressor_attack_ms=float(max(0.5, atk)),
+                compressor_release_ms=float(max(5.0, rel)),
                 compressor_makeup_db=max(float(params.compressor_makeup_db), 3.0),
                 limiter_ceiling_db=-1.0,
             )
@@ -594,12 +654,10 @@ def _generate(
             "sound_path": str(sp),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
-        if pro_preset != "off":
-            credits["pro_preset"] = str(pro_preset)
-        if polish_profile != "off":
-            credits["polish_profile"] = str(polish_profile)
-        if loop_clean:
-            credits["loop_clean"] = True
+        credits["pro_preset"] = str(pro_preset or "off")
+        credits["polish_profile"] = str(polish_profile or "off")
+        credits["loop_clean"] = bool(loop_clean)
+        credits["loop_crossfade_ms"] = 100
         if generated.sources:
             credits["sources"] = list(generated.sources)
 
@@ -626,98 +684,103 @@ def _generate(
 def main() -> None:
     with gr.Blocks(title="Sound Generator") as demo:
         gr.Markdown("# Prompt → Sound Effect")
-        engine = gr.Radio(["diffusers", "rfxgen", "samplelib", "synth", "layered"], value="diffusers", label="Engine")
-        with gr.Row():
-            prompt = gr.Textbox(label="Prompt", placeholder="e.g. laser zap, sci-fi blaster, short")
-        with gr.Row():
-            seconds = gr.Slider(0.5, 10.0, value=3.0, step=0.5, label="Seconds")
-            seed = gr.Number(value=None, precision=0, label="Seed (optional)")
-        with gr.Row():
-            device = gr.Dropdown(["cpu", "cuda"], value="cpu", label="Device")
-            model = gr.Dropdown(
-                ["cvssp/audioldm2"],
-                value="cvssp/audioldm2",
-                label="Model",
-            )
-
-        with gr.Accordion("Diffusers multi-band (model-side)", open=False):
-            diffusers_multiband = gr.Checkbox(value=False, label="Enable multi-band diffusers (slower, cleaner bands)")
-            diffusers_mb_mode = gr.Dropdown(["auto", "2band", "3band"], value="auto", label="Bands")
+        with gr.Accordion("Engine & preset", open=True):
+            engine = gr.Radio(["diffusers", "rfxgen", "samplelib", "synth", "layered"], value="diffusers", label="Engine")
             with gr.Row():
-                diffusers_mb_low_hz = gr.Slider(80.0, 800.0, value=250.0, step=10.0, label="Low crossover (Hz)")
-                diffusers_mb_high_hz = gr.Slider(800.0, 8000.0, value=3000.0, step=50.0, label="High crossover (Hz)")
-        with gr.Row():
-            preset = gr.Dropdown(list(SUPPORTED_PRESETS), value="blip", label="rfxgen preset")
-            rfxgen_path = gr.Textbox(value="", label="rfxgen path (optional)", placeholder="e.g. tools/rfxgen/rfxgen.exe")
+                device = gr.Dropdown(["cpu", "cuda"], value="cpu", label="Device")
+                model = gr.Dropdown(
+                    ["cvssp/audioldm2"],
+                    value="cvssp/audioldm2",
+                    label="Model",
+                )
 
-        with gr.Row():
-            library_mix_count = gr.Slider(1, 2, value=1, step=1, label="samplelib mix count")
-            synth_waveform = gr.Dropdown(["sine", "square", "saw", "triangle", "noise"], value="sine", label="synth waveform")
+            with gr.Accordion("Diffusers multi-band (model-side)", open=False):
+                diffusers_multiband = gr.Checkbox(value=False, label="Enable multi-band diffusers (slower, cleaner bands)")
+                diffusers_mb_mode = gr.Dropdown(["auto", "2band", "3band"], value="auto", label="Bands")
+                with gr.Row():
+                    diffusers_mb_low_hz = gr.Slider(80.0, 800.0, value=250.0, step=10.0, label="Low crossover (Hz)")
+                    diffusers_mb_high_hz = gr.Slider(800.0, 8000.0, value=3000.0, step=50.0, label="High crossover (Hz)")
 
-        with gr.Row():
-            layered_preset = gr.Dropdown(
-                ["auto", "ui", "impact", "whoosh", "creature"],
-                value="auto",
-                label="layered preset",
-            )
-            layered_curve = gr.Dropdown(["linear", "exponential"], value="linear", label="layered curve")
-            layered_duck = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="layered duck (transient→body)")
-            layered_family = gr.Checkbox(value=True, label="layered family mode")
-            layered_source_lock = gr.Checkbox(value=True, label="layered source lock")
-            layered_source_seed = gr.Number(value=None, precision=0, label="layered source seed (optional)", visible=False)
-            layered_micro_variation = gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="layered micro-variation")
-            layered_granular_preset = gr.Dropdown(
-                ["off", "auto", "chitter", "rasp", "buzz", "screech"],
-                value="off",
-                label="layered granular preset",
-            )
-            layered_granular_amount = gr.Slider(
-                0.0,
-                1.0,
-                value=0.0,
-                step=0.05,
-                label="layered granular amount",
-                visible=False,
-            )
-            layered_granular_grain_ms = gr.Slider(
-                6.0,
-                120.0,
-                value=28.0,
-                step=1.0,
-                label="layered granular grain (ms)",
-                visible=False,
-            )
-            layered_granular_spray = gr.Slider(
-                0.0,
-                1.0,
-                value=0.35,
-                step=0.05,
-                label="layered granular spray",
-                visible=False,
-            )
-            layered_transient_sharpness = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="layered transient sharpness")
-            layered_tail_length_ms = gr.Slider(80, 1200, value=350, step=10, label="layered tail length (ms)")
+            with gr.Row():
+                preset = gr.Dropdown(list(SUPPORTED_PRESETS), value="blip", label="rfxgen preset")
+                rfxgen_path = gr.Textbox(value="", label="rfxgen path (optional)", placeholder="e.g. tools/rfxgen/rfxgen.exe")
 
-        layered_source_lock.change(
-            fn=lambda v: gr.update(visible=bool(v)),
-            inputs=[layered_source_lock],
-            outputs=[layered_source_seed],
-        )
+            with gr.Row():
+                library_mix_count = gr.Slider(1, 2, value=1, step=1, label="samplelib mix count")
+                synth_waveform = gr.Dropdown(["sine", "square", "saw", "triangle", "noise"], value="sine", label="synth waveform")
 
-        layered_granular_preset.change(
-            fn=lambda v: (
-                gr.update(visible=str(v).strip().lower() != "off"),
-                gr.update(visible=str(v).strip().lower() != "off"),
-                gr.update(visible=str(v).strip().lower() != "off"),
-            ),
-            inputs=[layered_granular_preset],
-            outputs=[layered_granular_amount, layered_granular_grain_ms, layered_granular_spray],
-        )
+            with gr.Row():
+                layered_preset = gr.Dropdown(
+                    ["auto", "ui", "impact", "whoosh", "creature"],
+                    value="auto",
+                    label="layered preset",
+                )
+                layered_curve = gr.Dropdown(["linear", "exponential"], value="linear", label="layered curve")
+                layered_duck = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="layered duck (transient→body)")
+                layered_family = gr.Checkbox(value=True, label="layered family mode")
+                layered_source_lock = gr.Checkbox(value=True, label="layered source lock")
+                layered_source_seed = gr.Number(value=None, precision=0, label="layered source seed (optional)", visible=False)
+                layered_micro_variation = gr.Slider(0.0, 1.0, value=0.25, step=0.05, label="layered micro-variation")
+                layered_granular_preset = gr.Dropdown(
+                    ["off", "auto", "chitter", "rasp", "buzz", "screech"],
+                    value="off",
+                    label="layered granular preset",
+                )
+                layered_granular_amount = gr.Slider(
+                    0.0,
+                    1.0,
+                    value=0.0,
+                    step=0.05,
+                    label="layered granular amount",
+                    visible=False,
+                )
+                layered_granular_grain_ms = gr.Slider(
+                    6.0,
+                    120.0,
+                    value=28.0,
+                    step=1.0,
+                    label="layered granular grain (ms)",
+                    visible=False,
+                )
+                layered_granular_spray = gr.Slider(
+                    0.0,
+                    1.0,
+                    value=0.35,
+                    step=0.05,
+                    label="layered granular spray",
+                    visible=False,
+                )
+                layered_transient_sharpness = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="layered transient sharpness")
+                layered_tail_length_ms = gr.Slider(80, 1200, value=350, step=10, label="layered tail length (ms)")
 
-        with gr.Row():
-            layered_transient_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered transient tilt")
-            layered_body_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered body tilt")
-            layered_tail_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered tail tilt")
+            layered_source_lock.change(
+                fn=lambda v: gr.update(visible=bool(v)),
+                inputs=[layered_source_lock],
+                outputs=[layered_source_seed],
+            )
+
+            layered_granular_preset.change(
+                fn=lambda v: (
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                    gr.update(visible=str(v).strip().lower() != "off"),
+                ),
+                inputs=[layered_granular_preset],
+                outputs=[layered_granular_amount, layered_granular_grain_ms, layered_granular_spray],
+            )
+
+            with gr.Row():
+                layered_transient_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered transient tilt")
+                layered_body_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered body tilt")
+                layered_tail_tilt = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="layered tail tilt")
+
+        with gr.Accordion("Prompt & duration", open=True):
+            with gr.Row():
+                prompt = gr.Textbox(label="Prompt", placeholder="e.g. laser zap, sci-fi blaster, short")
+            with gr.Row():
+                seconds = gr.Slider(0.5, 10.0, value=3.0, step=0.5, label="Seconds")
+                seed = gr.Number(value=None, precision=0, label="Seed (optional)")
+            map_controls = gr.Checkbox(value=False, label="Map prompt → control hints")
 
         gr.Markdown("## Export")
         with gr.Row():
@@ -727,18 +790,16 @@ def main() -> None:
             wav_subtype = gr.Dropdown(["PCM_16", "PCM_24", "FLOAT"], value="PCM_16", label="WAV subtype")
             mp3_bitrate = gr.Textbox(value="192k", label="MP3 bitrate")
 
-        map_controls = gr.Checkbox(value=False, label="Map prompt → control hints")
-
-        with gr.Accordion("Pro controls (conditioning + DSP)", open=False):
-            gr.Markdown("### Conditioning")
+        with gr.Accordion("Pro preset", open=False):
             pro_preset = gr.Dropdown(["off", *pro_preset_keys()], value="off", label="pro preset")
+            pro_preset_info = gr.Markdown("", visible=False)
             with gr.Row():
                 emotion = gr.Dropdown(["neutral", "aggressive", "calm", "scared"], value="neutral", label="emotion")
                 intensity = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="intensity")
                 variation = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="variation")
                 pitch_contour = gr.Dropdown(["flat", "rise", "fall", "updown", "downup"], value="flat", label="pitch contour")
 
-            gr.Markdown("### Pro DSP (post)")
+        with gr.Accordion("Advanced / Pro Mode", open=False):
             multiband = gr.Checkbox(value=False, label="multi-band cleanup")
             with gr.Row():
                 mb_low_hz = gr.Slider(80.0, 600.0, value=250.0, step=10.0, label="mb low crossover (Hz)")
@@ -785,11 +846,46 @@ def main() -> None:
                 outputs=[reverb_mix, reverb_time],
             )
 
-        polish_profile = gr.Dropdown(["off", *polish_profile_keys()], value="off", label="polish profile")
+            gr.Markdown("### Pro Mode overrides (optional)")
+            with gr.Row():
+                denoise_amount = gr.Number(value=None, precision=2, label="denoise amount (0..1, blank=auto)")
+                exciter_amount = gr.Number(value=None, precision=2, label="exciter amount (0..1, blank=auto)")
+            with gr.Row():
+                transient_attack = gr.Number(value=None, precision=2, label="transient attack (-1..+1, blank=auto)")
+                transient_sustain = gr.Number(value=None, precision=2, label="transient sustain (-1..+1, blank=auto)")
+            with gr.Row():
+                compressor_attack_ms = gr.Number(value=None, precision=1, label="compressor attack (ms, blank=default)")
+                compressor_release_ms = gr.Number(value=None, precision=1, label="compressor release (ms, blank=default)")
 
-        post = gr.Checkbox(value=True, label="Post-process (trim/fade/normalize/EQ)")
-        polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
-        loop_clean = gr.Checkbox(value=False, label="Loop-clean ambience (100ms seam crossfade)")
+        with gr.Accordion("Polish profile", open=False):
+            polish_profile = gr.Dropdown(["off", *polish_profile_keys()], value="off", label="polish profile")
+            polish_profile_info = gr.Markdown("", visible=False)
+            post = gr.Checkbox(value=True, label="Post-process (trim/fade/normalize/EQ)")
+            polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
+            loop_clean = gr.Checkbox(value=False, label="Loop-clean ambience (100ms seam crossfade)")
+
+        def _preset_info_md(k: str) -> gr.Update:
+            key = str(k or "off").strip()
+            if not key or key.lower() == "off":
+                return gr.update(value="", visible=False)
+            obj = PRO_PRESETS.get(key)
+            if obj is None:
+                return gr.update(value="", visible=False)
+            rec = pro_preset_recommended_profile(key)
+            rec_line = f"\n\nRecommended polish profile: `{rec}`" if rec else ""
+            return gr.update(value=f"**{obj.title}** — {obj.description}{rec_line}", visible=True)
+
+        def _profile_info_md(k: str) -> gr.Update:
+            key = str(k or "off").strip()
+            if not key or key.lower() == "off":
+                return gr.update(value="", visible=False)
+            obj = POLISH_PROFILES.get(key)
+            if obj is None:
+                return gr.update(value="", visible=False)
+            return gr.update(value=f"**{obj.title}** — {obj.description}", visible=True)
+
+        pro_preset.change(fn=_preset_info_md, inputs=[pro_preset], outputs=[pro_preset_info])
+        polish_profile.change(fn=_profile_info_md, inputs=[polish_profile], outputs=[polish_profile_info])
 
         gr.Markdown("## Minecraft export (1.20.1)")
         export_minecraft = gr.Checkbox(value=False, label="Export to Minecraft (.ogg + sounds.json)")
@@ -880,6 +976,13 @@ def main() -> None:
                 reverb_preset,
                 reverb_mix,
                 reverb_time,
+
+                denoise_amount,
+                transient_attack,
+                transient_sustain,
+                exciter_amount,
+                compressor_attack_ms,
+                compressor_release_ms,
 
                 loop_clean,
 

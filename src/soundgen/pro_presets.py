@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 
@@ -21,9 +21,72 @@ class ProPreset:
     # Optional prompt augmentation. Applied for AI/samplelib-style engines only.
     prompt_suffix: str | None = None
 
+    # Recommended named polish profile (does not auto-apply; used for UI/help/traceability).
+    recommended_polish_profile: str | None = None
+
     # Args overrides (dest -> value). Applied only when the current value equals
     # parser default.
     args: dict[str, Any] | None = None
+
+
+def infer_recommended_polish_profile(preset_key: str) -> str | None:
+    """Best-effort recommendation mapping.
+
+    Keeps the system "designed": every preset can suggest a profile, but users
+    remain free to pick a different profile (or keep it off).
+    """
+
+    key = str(preset_key or "").strip().lower()
+    if not key or key == "off":
+        return None
+
+    if key.startswith("creature."):
+        if "whisper" in key or "ethereal" in key:
+            return "creature_hushed"
+        if "roar" in key or "large" in key:
+            return "creature_low_end"
+        if "chitter" in key or "buzz" in key or "insect" in key:
+            return "creature_snappy"
+        return "creature_gritty"
+
+    if key.startswith("env."):
+        if "loop" in key:
+            return "ambience_loop_ready"
+        if "cave" in key or "lava" in key:
+            return "ambience_warm_mono"
+        if "magical" in key:
+            return "ambience_glue_open"
+        return "ambience_smooth"
+
+    if key.startswith("ui."):
+        return "ui_clean"
+
+    if key.startswith("impact."):
+        return "impact_hard_punch"
+
+    if key.startswith("foley."):
+        return "foley_punchy"
+
+    return "ui_clean"
+
+
+def get_pro_preset(preset_key: str) -> ProPreset | None:
+    key = str(preset_key or "").strip()
+    if not key or key.lower() == "off":
+        return None
+
+    obj = PRO_PRESETS.get(key)
+    if obj is None:
+        return None
+    if obj.recommended_polish_profile:
+        return obj
+    rec = infer_recommended_polish_profile(key)
+    return replace(obj, recommended_polish_profile=rec)
+
+
+def pro_preset_recommended_profile(preset_key: str) -> str | None:
+    obj = get_pro_preset(preset_key)
+    return None if obj is None else obj.recommended_polish_profile
 
 
 # Keep keys stable (used in CLI/web).

@@ -46,6 +46,20 @@ Notes:
 - These builds can be large (torch/diffusers/transformers).
 - Some features still require external tools (e.g. `ffmpeg` on PATH for MP3/OGG export).
 
+## In-repo demo sound pack (v1)
+
+This repo includes a small, curated demo pack under [soundpack_v1/README.md](soundpack_v1/README.md).
+
+- Build/regenerate WAV + Minecraft-ready OGG + per-file credits:
+	- `python scripts/build_soundpack_v1.py`
+- Minecraft playsound ids use namespace `soundgen` and events like:
+	- `soundgen:soundpack_v1.ui.click_soft`
+
+## Design docs
+
+- Pro Mode spec (controls, ranges, precedence): [docs/pro_mode_spec.md](docs/pro_mode_spec.md)
+- Creature preset ↔ polish profile matrix: [docs/creature_preset_polish_matrix.md](docs/creature_preset_polish_matrix.md)
+
 ## Generate from the CLI
 
 ```powershell
@@ -145,6 +159,14 @@ You can use the same `--pro-preset` flag in:
 - Web UI: `python -m soundgen.web` (Pro controls → pro preset)
 - Batch: `python -m soundgen.batch ...`
 - Docs workflow: `python -m soundgen.from_docs ...`
+
+Each Pro preset also has a **recommended `--polish-profile`** (shown in the Web UI under the preset description). You can ignore it, or override it explicitly with `--polish-profile <key>`.
+
+Credits:
+- CLI output writes `outputs\<file>.credits.json`
+- Minecraft export writes `assets/<namespace>/soundgen_credits.json`
+
+These always include: `pro_preset`, `polish_profile`, `loop_clean`, `loop_crossfade_ms`.
 
 ### Export format options (non-Minecraft)
 

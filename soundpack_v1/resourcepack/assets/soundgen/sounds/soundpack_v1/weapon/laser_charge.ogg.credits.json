@@ -1,0 +1,19 @@
+{
+  "engine": "rfxgen",
+  "prompt": "laser charge up, rising energy whine",
+  "emotion": "neutral",
+  "intensity": 0.45,
+  "variation": 0.3,
+  "pitch_contour": "updown",
+  "sound_path": "soundpack_v1/weapon/laser_charge",
+  "rfxgen_path": "tools\\rfxgen\\rfxgen.exe",
+  "pro_preset": "env.magical_hum",
+  "polish_profile": "ui_clean",
+  "loop_clean": false,
+  "loop_crossfade_ms": 100,
+  "soundpack_id": "soundpack_v1",
+  "soundpack_version": "1.0.0",
+  "item_id": "weapon_laser_charge",
+  "namespace": "soundgen",
+  "event": "soundpack_v1.weapon.laser_charge"
+}

@@ -1,0 +1,19 @@
+{
+  "engine": "rfxgen",
+  "prompt": "heavy punch impact, hard transient, body",
+  "emotion": "aggressive",
+  "intensity": 0.75,
+  "variation": 0.25,
+  "pitch_contour": "fall",
+  "sound_path": "soundpack_v1/impact/punch_heavy",
+  "rfxgen_path": "tools\\rfxgen\\rfxgen.exe",
+  "pro_preset": "foley.flesh_impact",
+  "polish_profile": "impact_hard_punch",
+  "loop_clean": false,
+  "loop_crossfade_ms": 100,
+  "soundpack_id": "soundpack_v1",
+  "soundpack_version": "1.0.0",
+  "item_id": "impact_punch_heavy",
+  "namespace": "soundgen",
+  "event": "soundpack_v1.impact.punch_heavy"
+}

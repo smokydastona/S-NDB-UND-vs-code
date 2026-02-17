@@ -1,0 +1,14 @@
+{
+  "subtitles.soundgen.soundpack_v1.ui.click_soft": "UI click",
+  "subtitles.soundgen.soundpack_v1.ui.click_hard": "UI click",
+  "subtitles.soundgen.soundpack_v1.ui.coin_pickup": "Coin pickup",
+  "subtitles.soundgen.soundpack_v1.ui.powerup_chime": "Powerup",
+  "subtitles.soundgen.soundpack_v1.weapon.laser_zap": "Laser",
+  "subtitles.soundgen.soundpack_v1.weapon.laser_charge": "Charge",
+  "subtitles.soundgen.soundpack_v1.impact.punch_light": "Impact",
+  "subtitles.soundgen.soundpack_v1.impact.punch_heavy": "Impact",
+  "subtitles.soundgen.soundpack_v1.explosion.small_boom": "Explosion",
+  "subtitles.soundgen.soundpack_v1.explosion.big_boom": "Explosion",
+  "subtitles.soundgen.soundpack_v1.movement.jump": "Jump",
+  "subtitles.soundgen.soundpack_v1.whoosh.fast_swing": "Whoosh"
+}

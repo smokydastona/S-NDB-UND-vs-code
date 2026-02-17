@@ -31,6 +31,7 @@ def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: 
 
     denoise = (0.25 if bool(getattr(args, "polish", False)) else 0.0)
     transient = (0.25 if bool(getattr(args, "polish", False)) else 0.0)
+    transient_sustain = 0.0
     comp_thr = (-18.0 if bool(getattr(args, "polish", False)) else None)
     comp_makeup = (3.0 if bool(getattr(args, "polish", False)) else 0.0)
     limiter = (-1.0 if bool(getattr(args, "polish", False)) else None)
@@ -46,6 +47,23 @@ def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: 
             transient = float(np.clip(transient - 0.15, -1.0, 1.0))
         elif emotion == "scared":
             transient = float(np.clip(transient + 0.10, -1.0, 1.0))
+
+    denoise_ovr = getattr(args, "denoise_amount", None)
+    if denoise_ovr is not None:
+        denoise = float(np.clip(float(denoise_ovr), 0.0, 1.0))
+
+    trans_attack_ovr = getattr(args, "transient_attack", None)
+    if trans_attack_ovr is not None:
+        transient = float(np.clip(float(trans_attack_ovr), -1.0, 1.0))
+
+    trans_sustain_ovr = getattr(args, "transient_sustain", None)
+    if trans_sustain_ovr is not None:
+        transient_sustain = float(np.clip(float(trans_sustain_ovr), -1.0, 1.0))
+
+    exciter = 0.0
+    exciter_ovr = getattr(args, "exciter_amount", None)
+    if exciter_ovr is not None:
+        exciter = float(np.clip(float(exciter_ovr), 0.0, 1.0))
 
     texture_preset = str(getattr(args, "texture_preset", "off") or "off")
     texture_amount = float(getattr(args, "texture_amount", 0.0) or 0.0)
@@ -67,7 +85,9 @@ def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: 
     return PostProcessParams(
         denoise_strength=float(denoise),
         transient_amount=float(transient),
+        transient_sustain=float(transient_sustain),
         transient_split_hz=1200.0,
+        exciter_amount=float(exciter),
         multiband=bool(getattr(args, "multiband", False) or (bool(getattr(args, "polish", False)) and intensity > 0.0)),
         multiband_low_hz=float(getattr(args, "mb_low_hz", 180.0)),
         multiband_high_hz=float(getattr(args, "mb_high_hz", 3800.0)),
@@ -88,6 +108,8 @@ def _pp_params(*, args: argparse.Namespace, post_seed: int | None, prompt_hint: 
         random_seed=(int(post_seed) if post_seed is not None else None),
         prompt_hint=(str(prompt_hint) if prompt_hint else None),
         compressor_threshold_db=(float(comp_thr) if comp_thr is not None else None),
+        compressor_attack_ms=float(getattr(args, "compressor_attack_ms", 5.0) if getattr(args, "compressor_attack_ms", None) is not None else (5.0 if bool(getattr(args, "polish", False)) else 5.0)),
+        compressor_release_ms=float(getattr(args, "compressor_release_ms", 90.0) if getattr(args, "compressor_release_ms", None) is not None else (90.0 if bool(getattr(args, "polish", False)) else 80.0)),
         compressor_makeup_db=float(comp_makeup),
         limiter_ceiling_db=(float(limiter) if limiter is not None else None),
         loop_clean=bool(getattr(args, "loop", False)),
@@ -157,7 +179,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mb-comp-ratio", type=float, default=2.0)
 
     p.add_argument("--creature-size", type=float, default=0.0, help="-1..+1")
-    p.add_argument("--formant-shift", type=float, default=0.0)
+    p.add_argument("--formant-shift", type=float, default=1.0)
+
+    # Pro Mode overrides (optional). If omitted, polish/conditioning selects conservative values.
+    p.add_argument("--denoise-amount", type=float, default=None, help="Override denoise amount 0..1 (omit to use defaults).")
+    p.add_argument("--transient-attack", type=float, default=None, help="Override transient attack emphasis -1..+1 (omit to use defaults).")
+    p.add_argument("--transient-sustain", type=float, default=None, help="Override transient sustain emphasis -1..+1 (omit to use defaults).")
+    p.add_argument("--exciter-amount", type=float, default=None, help="Override exciter amount 0..1 (omit to use defaults).")
+    p.add_argument("--compressor-attack-ms", type=float, default=None, help="Override compressor attack (ms) for polish mode.")
+    p.add_argument("--compressor-release-ms", type=float, default=None, help="Override compressor release (ms) for polish mode.")
 
     p.add_argument("--texture-preset", choices=["off", "auto", "chitter", "rasp", "buzz", "screech"], default="off")
     p.add_argument("--texture-amount", type=float, default=0.0)
@@ -304,6 +334,10 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace) -> list[Path]:
                 "intensity": float(getattr(args, "intensity", 0.0) or 0.0),
                 "variation": float(getattr(args, "variation", 0.0) or 0.0),
                 "pitch_contour": pitch_contour,
+                "pro_preset": str(getattr(args, "pro_preset", "off")),
+                "polish_profile": str(getattr(args, "polish_profile", "off")),
+                "loop_clean": bool(getattr(args, "loop", False)),
+                "loop_crossfade_ms": int(getattr(args, "loop_crossfade_ms", 100)),
             }
             credits.update({k: v for k, v in generated.credits_extra.items() if v is not None})
             if sources:
