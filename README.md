@@ -154,6 +154,7 @@ This repo includes a small, curated demo pack under [soundpack_v1/README.md](sou
 - Pro Mode spec (controls, ranges, precedence): [docs/pro_mode_spec.md](docs/pro_mode_spec.md)
 - Creature preset ↔ polish profile matrix: [docs/creature_preset_polish_matrix.md](docs/creature_preset_polish_matrix.md)
 - Creature vocalization prompt templates: [docs/creature_prompt_templates.md](docs/creature_prompt_templates.md)
+- Plugins (engine discovery): [docs/plugins.md](docs/plugins.md)
 
 ## Benchmark (QA proxy metrics)
 

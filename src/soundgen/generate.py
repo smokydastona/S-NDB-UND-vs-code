@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import resample_poly
 
-from .engine_registry import GeneratedWav, generate_wav
+from .engine_registry import GeneratedWav, available_engines, generate_wav
 from .io_utils import convert_audio_with_ffmpeg, read_wav_mono, write_wav
 from .postprocess import PostProcessParams, post_process_audio
 from .qa import compute_metrics, detect_long_tail
@@ -22,9 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate a sound effect WAV from a text prompt.")
     p.add_argument(
         "--engine",
-        choices=["diffusers", "stable_audio_open", "rfxgen", "replicate", "samplelib", "synth", "layered"],
+        choices=available_engines(),
         default="diffusers",
-        help="Generation engine: diffusers (AI), stable_audio_open (AI), rfxgen (procedural presets), replicate (paid API), samplelib (sample library zips), synth (DSP), or layered (samplelib transient/tail + synth body).",
+        help="Generation engine (built-ins + optional plugins). Built-ins: diffusers, stable_audio_open, rfxgen, replicate, samplelib, synth, layered.",
     )
     p.add_argument("--prompt", required=True, help="Text prompt describing the sound.")
     p.add_argument("--seconds", type=float, default=3.0, help="Duration in seconds.")

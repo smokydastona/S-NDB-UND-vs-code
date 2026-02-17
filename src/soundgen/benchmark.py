@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-from .engine_registry import generate_wav
+from .engine_registry import available_engines, generate_wav
 from .io_utils import read_wav_mono
 from .postprocess import PostProcessParams, post_process_audio
 from .qa import compute_metrics, detect_long_tail
@@ -199,8 +199,14 @@ def run_benchmark(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--engines",
         nargs="+",
+        choices=available_engines(),
         default=["diffusers", "stable_audio_open", "layered", "rfxgen"],
-        help="Engines to run.",
+        help="Engines to run (built-ins + optional plugins).",
+    )
+    p.add_argument(
+        "--engine-choices",
+        action="store_true",
+        help="Print available engine names (including plugins) and exit.",
     )
     p.add_argument("--repeats", type=int, default=4, help="Runs per prompt per engine.")
     p.add_argument("--seed", type=int, default=1000, help="Base seed; repeat i uses seed+i.")
@@ -226,6 +232,10 @@ def run_benchmark(argv: list[str] | None = None) -> int:
     p.add_argument("--hf-token", default=None, help="Optional HF token for stable_audio_open.")
 
     args = p.parse_args(argv)
+
+    if bool(getattr(args, "engine_choices", False)):
+        print("\n".join(available_engines()))
+        return 0
 
     engines = [str(e).strip().lower() for e in (args.engines or []) if str(e).strip()]
     repeats = max(1, int(args.repeats))

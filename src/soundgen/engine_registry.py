@@ -14,6 +14,66 @@ from .io_utils import read_wav_mono, write_wav
 PostprocessFn = Callable[[np.ndarray, int], tuple[np.ndarray, str]]
 
 
+@dataclass(frozen=True)
+class EnginePluginResult:
+    audio: np.ndarray
+    sample_rate: int
+    credits_extra: dict[str, Any] = field(default_factory=dict)
+    sources: tuple[dict[str, Any], ...] = ()
+
+
+EnginePluginFn = Callable[[dict[str, Any]], EnginePluginResult]
+
+
+BUILTIN_ENGINES: tuple[str, ...] = (
+    "diffusers",
+    "stable_audio_open",
+    "rfxgen",
+    "replicate",
+    "samplelib",
+    "synth",
+    "layered",
+)
+
+_ENGINE_PLUGINS: dict[str, EnginePluginFn] = {}
+_PLUGINS_LOADED: bool = False
+
+
+def register_engine(*, engine_name: str, engine_fn: EnginePluginFn, overwrite: bool = False) -> None:
+    """Register an engine plugin.
+
+    Plugins are expected to be *audio-producing* engines: they return mono audio
+    and a sample rate; `generate_wav()` handles postprocess + WAV writing.
+    """
+
+    key = str(engine_name or "").strip().lower()
+    if not key:
+        raise ValueError("engine_name is required")
+    if not overwrite and key in _ENGINE_PLUGINS:
+        raise ValueError(f"Engine already registered: {key}")
+    _ENGINE_PLUGINS[key] = engine_fn
+
+
+def _load_plugins_once() -> None:
+    global _PLUGINS_LOADED
+    if _PLUGINS_LOADED:
+        return
+    _PLUGINS_LOADED = True
+
+    try:
+        from .plugin_loader import load_engine_plugins
+
+        load_engine_plugins(register_engine=lambda name, fn: register_engine(engine_name=name, engine_fn=fn))
+    except Exception:
+        # Plugin loading is best-effort; core engines must keep working.
+        return
+
+
+def available_engines() -> list[str]:
+    _load_plugins_once()
+    return sorted(set(BUILTIN_ENGINES).union(_ENGINE_PLUGINS.keys()))
+
+
 _DEFAULT_SAMPLELIB_INDEX_PATH = Path("library") / "samplelib_index.json"
 
 
@@ -113,6 +173,10 @@ def generate_wav(
     """
 
     engine = str(engine).strip().lower()
+
+    # Best-effort plugin discovery (no-op if no plugins are present).
+    _load_plugins_once()
+
     out_wav = Path(out_wav)
     out_wav.parent.mkdir(parents=True, exist_ok=True)
 
@@ -321,6 +385,30 @@ def generate_wav(
     post_info: str | None = None
     sources: tuple[dict[str, Any], ...] = ()
     credits_extra: dict[str, Any] = {}
+
+    # Plugin engines (audio-producing).
+    plugin_fn = _ENGINE_PLUGINS.get(engine)
+    if plugin_fn is not None:
+        req = {
+            "engine": engine,
+            "prompt": prompt,
+            "seconds": float(seconds),
+            "seed": seed,
+            "device": (str(device) if device is not None else None),
+            "sample_rate": int(sample_rate),
+        }
+        res = plugin_fn(req)
+        audio = res.audio
+        sr = int(res.sample_rate)
+        if postprocess_fn is not None:
+            audio, post_info = postprocess_fn(audio, sr)
+        write_wav(out_wav, audio, sr)
+        return GeneratedWav(
+            wav_path=out_wav,
+            post_info=post_info,
+            sources=tuple(res.sources),
+            credits_extra=dict(res.credits_extra),
+        )
 
     if engine == "diffusers":
         from .audiogen_backend import GenerationParams, generate_audio

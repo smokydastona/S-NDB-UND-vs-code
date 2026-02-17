@@ -8,6 +8,7 @@ from pathlib import Path
 from .manifest import ManifestItem
 from .doc_reader import UnsupportedDocumentError, extract_sound_prompts, read_document_text, to_prompt
 from .batch import run_item
+from .engine_registry import available_engines
 from .pro_presets import apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
 
@@ -29,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Glob pattern inside the folder (default: **/*)",
     )
 
-    p.add_argument("--engine", choices=["rfxgen", "diffusers", "stable_audio_open"], default="rfxgen")
+    built = ["rfxgen", "diffusers", "stable_audio_open"]
+    extra = [e for e in available_engines() if e not in built]
+    p.add_argument("--engine", choices=[*built, *extra], default="rfxgen")
     p.add_argument(
         "--prefer-doc-manifest",
         action=argparse.BooleanOptionalAction,

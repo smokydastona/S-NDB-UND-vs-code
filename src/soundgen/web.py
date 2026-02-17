@@ -7,7 +7,7 @@ import gradio as gr
 import numpy as np
 
 from .credits import upsert_pack_credits, write_sidecar_credits
-from .engine_registry import generate_wav
+from .engine_registry import available_engines, generate_wav
 from .io_utils import convert_audio_with_ffmpeg, read_wav_mono, write_wav
 from .rfxgen_backend import SUPPORTED_PRESETS
 from .minecraft import export_wav_to_minecraft_pack
@@ -822,7 +822,7 @@ def build_demo() -> gr.Blocks:
             "Tip: turn on **Pro preset** or a **Polish profile** for quick wins."
         )
         with gr.Accordion("Engine & preset", open=True):
-            engine = gr.Radio(["diffusers", "stable_audio_open", "rfxgen", "replicate", "samplelib", "synth", "layered"], value="diffusers", label="Engine")
+            engine = gr.Radio(available_engines(), value="diffusers", label="Engine")
             with gr.Row():
                 device = gr.Dropdown(["cpu", "cuda"], value="cpu", label="Device")
                 model = gr.Dropdown(

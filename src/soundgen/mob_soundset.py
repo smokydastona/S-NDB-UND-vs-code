@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+from .engine_registry import available_engines
+
 
 def _slug(s: str) -> str:
     import re
@@ -26,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mob", required=True, help="Mob name (e.g. zombie, skeleton, slime).")
     p.add_argument(
         "--engine",
-        choices=["diffusers", "stable_audio_open", "rfxgen", "replicate", "samplelib", "synth", "layered"],
+        choices=available_engines(),
         default="layered",
         help="Engine to use for all generated sounds (default layered).",
     )

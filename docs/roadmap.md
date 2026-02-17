@@ -37,6 +37,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
 - **2.3 Engine registry (plugin discovery)** — **In repo (basic), Next (plugins)**
   - Registry exists as a dispatcher, but not yet a true plugin folder / entry-points discovery mechanism.
   - Next step: define a plugin API and load engines from `soundgen_plugins/` or Python entry points.
+  - Update: plugin discovery is now implemented; see `docs/plugins.md`.
 
 - **2.4 Unified metadata system** — **Done**
   - Sidecar credits JSON + pack credits JSON; includes timestamps and reproducibility fields.
