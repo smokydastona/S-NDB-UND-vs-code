@@ -23,6 +23,53 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later (optional)**
 - **In repo (basic)**: multi-region slicing + export-all (`R`, `O`) with per-region FX hook (`C`)
 - **In repo (basic)**: per-region loop point metadata export (`{`, `}`)
 
+## v2 Completion Checklist (Definition A)
+
+v2 is considered **complete** when every section below is **Done** end-to-end (code + docs + wired into CLI/GUI where applicable).
+
+- **v2.1 Editor v2** — **Next**
+  - **Done gate**: spectrogram view w/ adjustable FFT + frequency zoom + click-removal targeting
+  - **Done gate**: transient detection + snap-to-transient + usable UX for selection snapping
+  - **Done gate**: multi-region workflow (name regions, slice/export, delete, navigate)
+  - **Done gate**: region-based FX (per-region FX assignment + applied on export)
+  - **Done gate**: layering (2–4 layers max) with per-layer gain/pan/fade/pitch shift
+  - **Done gate**: loop tools (auto-crossfade loop creation + seamless loop preview)
+  - **Done gate**: loop point metadata export (for region exports + main export)
+  - **In repo (basic)**: spectrogram/transients/regions/loop metadata shipped (see above)
+
+- **v2.2 Presets v2 (Smart Presets)** — **Next**
+  - **Done gate**: parameter variables + randomized prompt fragments + families
+  - **Done gate**: preset inheritance (base → variants)
+  - **Done gate**: schema documented + example preset(s) included
+  - **Done gate**: wired through CLI + batch + docs-driven generation
+
+- **v2.3 FX Chains v2 (Modular + Visual)** — **Next**
+  - **Done gate**: new FX modules implemented (pitch shift, time stretch, distortion, convolution reverb IR, multi-band EQ, transient shaper, spectral noise reduction)
+  - **Done gate**: FX chain editor supports reorder + parameter editing + audition + save
+  - **Done gate**: chain format stable + documented
+
+- **v2.4 Project System (Sound Packs & Mobs)** — **Next**
+  - **Done gate**: project create/load + track generated/edited versions + metadata
+  - **Done gate**: pack export (Minecraft-ready where applicable) + versioning per sound
+  - **Done gate**: Minecraft project mode (generate → edit → export) workflow documented
+
+- **v2.5 Hybrid Engine Mode (AI + Procedural Layering)** — **Next**
+  - **Done gate**: AI base + procedural transient/noise texture layers + automix
+  - **Done gate**: apply FX chain to final composite + credits capture
+
+- **v2.6 Fine‑Tuning Support (Optional)** — **Next**
+  - **Done gate**: training script + validation preview + model versioning
+  - **Done gate**: preset linking to fine-tuned models
+
+- **v2.7 CLI v2** — **Next**
+  - **Done gate**: project creation + export commands
+  - **Done gate**: hybrid mode controls + preset variables + FX override + editor region export controls
+  - **Done gate**: README usage examples
+
+- **v2.8 GUI v1 (First Real Interface)** — **Next**
+  - **Done gate**: preset browser + generate panel + waveform editor + FX chain editor + project browser + export panel
+  - **Done gate**: install/run docs
+
 ## Phase 1 — Core foundations (toward 1.0)
 
 - **1.1 Multi‑engine architecture** — **Done**
