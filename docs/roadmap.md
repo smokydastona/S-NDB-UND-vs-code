@@ -71,7 +71,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
   - Envelope follower utilities shared by transient/ducking-style tools.
   - Ducking / sidechain-style polish (offline “duck bed under transients”).
   - Offline effect stack abstraction (configurable post stack + presets).
-  - Next: make “best-of-N candidate generation” a consistent cross-engine feature (generate N → score → keep best → record decision).
+  - Best-of-N is consistent across workflows: `--candidates` (single + web) and `candidates` in batch/docs manifests; implemented centrally in `soundgen.engine_registry.generate_wav`.
 
 - **3.6 Built-in SFX editor (laser-focused, not a DAW)** — **Next (v1)**
   - Goal: a small, destructive single-file editor for generated SFX and WAVs from disk.
