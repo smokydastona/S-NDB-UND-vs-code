@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -24,6 +25,39 @@ from .ui_models import Variant, normalize_variants_state
 
 
 AudioCache = dict[str, tuple[int, np.ndarray]]
+
+
+def _ui_icon_data_uri() -> str | None:
+    """Return a data: URI for the UI icon, if available.
+
+    Used only for optional UI styling (background watermark).
+    """
+
+    candidates: list[Path] = []
+    # Dev / repo layout.
+    candidates.append(Path(".examples") / "icon.png")
+    try:
+        candidates.append(Path(__file__).resolve().parents[2] / ".examples" / "icon.png")
+    except Exception:
+        pass
+
+    # PyInstaller / packaged layouts.
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / ".examples" / "icon.png")
+        candidates.append(exe_dir / "icon.png")
+    except Exception:
+        pass
+
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file():
+                b = p.read_bytes()
+                enc = base64.b64encode(b).decode("ascii")
+                return f"data:image/png;base64,{enc}"
+        except Exception:
+            continue
+    return None
 
 
 def _keep_control_panel_wavs() -> bool:
@@ -773,9 +807,30 @@ def _ui_export_bundle(
 
 
 def build_demo_control_panel() -> gr.Blocks:
-    css = """
-    .gradio-container { background: #0b0d10; }
-    .gradio-container * { color-scheme: dark; }
+    icon_uri = _ui_icon_data_uri()
+    watermark_css = ""
+    if icon_uri:
+        watermark_css = f"""
+    .gradio-container {{ position: relative; }}
+    .gradio-container::before {{
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url(\"{icon_uri}\");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: min(60vw, 520px);
+        opacity: 0.06;
+        pointer-events: none;
+        z-index: 0;
+    }}
+    .gradio-container > * {{ position: relative; z-index: 1; }}
+    """
+
+    css = f"""
+    .gradio-container {{ background: #0b0d10; }}
+    .gradio-container * {{ color-scheme: dark; }}
+    {watermark_css}
     """
 
     with gr.Blocks(title="SÖNDBÖUND", css=css) as demo:

@@ -49,6 +49,10 @@ if (Test-Path $iconPng) {
   if (Test-Path $iconIco) {
     $commonArgs += @("--icon", $iconIco)
   }
+
+  # Bundle the original PNG as data so the UI can use it as a background watermark.
+  # (PyInstaller expects SRC;DEST on Windows.)
+  $commonArgs += @("--add-data", "$iconPng;.examples")
 }
 
 $commonCollect = @(
