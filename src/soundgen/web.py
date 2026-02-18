@@ -925,14 +925,7 @@ def _generate(
                 params = replace(params, **replace_kwargs)
 
         return params
-        # If a chain requested post/polish enablement, honor it at runtime (so selecting a chain works
-        # even if the user forgot to toggle post on).
-        if patch:
-            # Note: we avoid mutating function args directly; _postprocess_fn checks (post or polish)
-            # captured from the outer scope, so we only use this to set params. The UI toggles still
-            # control whether post-processing runs.
-            pass
-        return params
+
     def _qa_info(audio: np.ndarray, sr: int) -> str:
         m = compute_metrics(audio, sr)
         flags: list[str] = []

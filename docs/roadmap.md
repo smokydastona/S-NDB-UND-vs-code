@@ -13,7 +13,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later (optional)**
 # v2 — Professional Sound‑Design Environment (Spec)
 
 - Spec doc: [docs/v2_spec.md](v2_spec.md)
-- Status: **Next** (multi-iteration)
+- Status: **Done**
 
 ## v2 Editor (early)
 
