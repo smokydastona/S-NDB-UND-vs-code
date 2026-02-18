@@ -60,12 +60,34 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
   - Loop-clean + crossfade exists.
   - Next: “loop suite” commands (auto-loop points, tail trimming heuristics, noise bed helpers).
 
-- **3.5 Editor-grade DSP + analysis (Audacity/Ardour inspired)** — **Next**
-  - **Export analysis report**: compute and record peak / true-peak (approx) / loudness proxy + normalization factor for each render (and per-candidate for best-of-N).
-  - **Fade/crossfade curves**: add selectable curve shapes (equal-power, exponential-ish) for loop-clean and layered crossfades.
-  - **Envelope follower library**: unify attack/release coefficient math and follower modes (peak vs RMS-ish) for compressor/transient tools.
-  - **Ducking / sidechain-style polish**: optional post step that ducks “bed/tail” under transients (offline analogue of sidechain compression).
-  - **Effect stack abstraction (offline)**: formalize the post chain as a configurable stack so batch/manifests can reorder/toggle blocks without new code paths.
+- **3.5 Editor-grade DSP + analysis (Audacity/Ardour inspired)** — **Done**
+  - Export analysis report (stored in credits / best-of-N selection).
+  - Fade/crossfade curve shapes for loop-clean + layered blending.
+  - Envelope follower utilities shared by transient/ducking-style tools.
+  - Ducking / sidechain-style polish (offline “duck bed under transients”).
+  - Offline effect stack abstraction (configurable post stack + presets).
+
+- **3.6 Built-in SFX editor (laser-focused, not a DAW)** — **Next (v1)**
+  - Goal: a small, destructive single-file editor for generated SFX and WAVs from disk.
+  - Fits pipeline: **Engine → Post-FX → Editor → Export**
+    - Generated sounds open directly in editor after creation (optional toggle).
+    - Editor can open any WAV from disk.
+    - Edits apply to a working copy; full multi-step undo/redo.
+    - Final export writes processed WAV plus updated metadata (trim points, gain, edits applied).
+  - **Definition of “complete” for S‑NDB‑UND v1 editor** (creature SFX + ambience-ready):
+    - **Waveform view**: zoom (wheel + shortcuts), scroll/pan, time cursor, drag selection.
+    - **Basic edits**: cut/copy/paste, delete selection, trim to selection.
+    - **Fades**: fade in/out, crossfade over selection.
+    - **Gain**: ±dB, normalize to peak target (default −1 dBFS).
+    - **Loop tools**: snap selection to loop boundaries, audition loop (seam check).
+    - **Markers**: mark transients, loop points, “good takes”.
+    - **Playback**: play from cursor, play selection, loop selection.
+    - **Export**: overwrite, “save as new variation” (auto suffix: `_edit1`, `_trim`, `_loopfix`, …).
+  - Tech stack (Python): PySide6/PyQt6 + (pyqtgraph **or** downsampled QPainter) + sounddevice for playback; processing remains numpy/scipy.
+  - **v2 nice-to-haves (Later)**:
+    - Spectrogram view (click/noise hunting).
+    - Multi-region per file (slice one WAV into multiple exports).
+    - Simple layering (overlay 2–3 sounds; not full multitrack).
 
 ## Phase 4 — Ecosystem & expansion (3.0 → 4.0)
 
