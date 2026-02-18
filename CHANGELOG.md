@@ -15,6 +15,8 @@ The format is loosely based on *Keep a Changelog*.
 ### Changed
 
 - Web UI: FX chains can be selected via an **FX chain (v1)** accordion.
+- Web UI (Control Panel): audio iteration is now **in-memory** (variants are cached; files are export artifacts).
+- Web UI (Control Panel): temporary WAVs are deleted by default after ingest; set `SOUNDGEN_CONTROL_PANEL_KEEP_WAVS=1` to keep them for debugging.
 
 ### Fixed
 

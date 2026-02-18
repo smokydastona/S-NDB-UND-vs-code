@@ -122,6 +122,11 @@ Panels available in the UI:
 - **FX Slots**: slot-based FX chain (no drag UI) for audition on the current variant.
 - **Export**: export selected or locked variants to a `.zip` bundle with token-based filenames.
 
+Notes:
+
+- The Control Panel keeps generated audio **in-memory** for fast iteration (preview/edits/FX). Files are written only during export.
+- By default, temporary Control Panel WAVs are deleted after ingest. To keep them for debugging: `SOUNDGEN_CONTROL_PANEL_KEEP_WAVS=1` (or `SOUNDGEN_CP_KEEP_WAVS=1`).
+
 If you want the previous accordion-heavy UI, run with:
 
 ```powershell
