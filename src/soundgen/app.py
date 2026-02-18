@@ -37,6 +37,7 @@ def _print_help() -> None:
         "  S-NDB-UND.exe project <args>   (Project system: track versions + export packs)\n"
         "  S-NDB-UND.exe mobset <args>    (Minecraft mob soundset generator)\n"
         "  S-NDB-UND.exe edit <wav>       (Built-in destructive editor)\n"
+        "  S-NDB-UND.exe regions <args>   (Editor region tools: export regions non-interactively)\n"
         "  S-NDB-UND.exe loop <args>      (Loop suite: auto loop points, tail trim, noise bed helpers)\n\n"
         "Help:\n"
         "  S-NDB-UND.exe mobset --help\n"
@@ -44,6 +45,7 @@ def _print_help() -> None:
         "  S-NDB-UND.exe generate --help\n"
         "  S-NDB-UND.exe finetune --help\n"
         "  S-NDB-UND.exe edit --help\n"
+        "  S-NDB-UND.exe regions --help\n"
         "  S-NDB-UND.exe loop --help\n"
     )
 
@@ -106,6 +108,11 @@ def main(argv: list[str] | None = None) -> int:
 
         launch_editor(rest[0])
         return 0
+
+    if cmd == "regions":
+        from .editor_regions import main as regions_main
+
+        return int(regions_main(rest))
 
     if cmd == "loop":
         from .loop_suite import run_loop_suite

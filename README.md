@@ -176,6 +176,25 @@ Or generate then open automatically:
 python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --post --out outputs\coin.wav --edit
 ```
 
+### Regions: export non-interactively (CLI)
+
+If you create regions in the editor (`R`) and export your edited WAV (`e` / `E`), the editor writes a sidecar file:
+
+- `outputs\coin.edits.json`
+
+You can then export all regions later *without opening the editor UI*:
+
+```powershell
+# Export regions from outputs\coin.edits.json (inferred automatically)
+python -m soundgen.editor_regions export --wav outputs\coin.wav
+
+# Export regions into a folder
+python -m soundgen.editor_regions export --wav outputs\coin.wav --out-dir outputs\regions
+
+# Export raw slices only (ignore per-region FX chain)
+python -m soundgen.editor_regions export --wav outputs\coin.wav --no-fx
+```
+
 Preset libraries (drop-in example files):
 
 - v2 smart presets: [configs/sfx_presets_v2.example.json](configs/sfx_presets_v2.example.json)

@@ -64,7 +64,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: training script + validation preview + model versioning
   - **Done gate**: preset linking to fine-tuned models
 
-- **v2.7 CLI v2** — **Next**
+- **v2.7 CLI v2** — **Done**
   - **Done gate**: project creation + export commands
   - **Done gate**: hybrid mode controls + preset variables + FX override + editor region export controls
   - **Done gate**: README usage examples

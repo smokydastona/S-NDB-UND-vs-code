@@ -14,6 +14,7 @@ soundgen-web = "soundgen.web:main"
 soundgen-batch = "soundgen.batch:main"
 soundgen-from-docs = "soundgen.from_docs:main"
 soundgen-finetune = "soundgen.finetune:main"
+soundgen-regions = "soundgen.editor_regions:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
