@@ -304,6 +304,14 @@ def _write_edits_sidecar(wav_path: Path, *, state: _State, mode: str) -> None:
                     "end_s": float(end) / float(state.sample_rate),
                     "fx_chain": (str(r.get("fx_chain")) if r.get("fx_chain") is not None else None),
                     "fx_chain_json": (str(r.get("fx_chain_json")) if r.get("fx_chain_json") is not None else None),
+                    "loop_s": (
+                        [
+                            float(int(r.get("loop_start") or 0)) / float(state.sample_rate),
+                            float(int(r.get("loop_end") or 0)) / float(state.sample_rate),
+                        ]
+                        if (r.get("loop_start") is not None and r.get("loop_end") is not None)
+                        else None
+                    ),
                 }
             )
         rec["regions"] = out
@@ -333,6 +341,8 @@ def _help_text() -> str:
         "  X: select active region\n"
         "  N: rename active region\n"
         "  C: set active region FX chain (export hook)\n"
+        "  {: set active region loop start\n"
+        "  }: set active region loop end\n"
         "  D: delete active region\n"
         "  O: export all regions\n"
         "\n"
@@ -596,6 +606,9 @@ def launch_editor(wav_path: str | Path) -> None:
                 # export hook (off by default)
                 "fx_chain": "off",
                 "fx_chain_json": None,
+                # optional loop markers (absolute sample positions)
+                "loop_start": None,
+                "loop_end": None,
             }
         )
         _set_active_region(len(rr) - 1)
@@ -671,6 +684,72 @@ def launch_editor(wav_path: str | Path) -> None:
         undo.push(st)
         r["fx_chain"] = str(v)
         _push_edit("region_fx_chain", {"name": str(r.get("name") or "region"), "fx_chain": str(v)})
+        _render()
+
+    def _set_active_region_loop(which: str) -> None:
+        r = _active_region_obj()
+        if r is None:
+            return
+
+        # Use selection bounds if present; else cursor.
+        a = int(st.cursor)
+        b = int(st.cursor)
+        if st.selection is not None:
+            lohi = _sel_range()
+            if lohi is not None:
+                a, b = lohi
+
+        # Snap to zero crossing for clean boundaries.
+        rad = int(0.005 * float(st.sample_rate))
+        a = _nearest_zero_crossing(st.audio, a, radius=rad)
+        b = _nearest_zero_crossing(st.audio, b, radius=rad)
+
+        try:
+            rlo = int(r.get("start") or 0)
+            rhi = int(r.get("end") or 0)
+        except Exception:
+            return
+        rlo = max(0, min(rlo, int(st.audio.size)))
+        rhi = max(0, min(rhi, int(st.audio.size)))
+        if rhi <= rlo:
+            return
+
+        a = max(rlo, min(a, rhi))
+        b = max(rlo, min(b, rhi))
+        if b < a:
+            a, b = b, a
+
+        undo.push(st)
+        if which == "start":
+            r["loop_start"] = int(a)
+            if r.get("loop_end") is None:
+                r["loop_end"] = int(rhi)
+        else:
+            r["loop_end"] = int(b)
+            if r.get("loop_start") is None:
+                r["loop_start"] = int(rlo)
+
+        try:
+            ls = int(r.get("loop_start") or rlo)
+            le = int(r.get("loop_end") or rhi)
+        except Exception:
+            ls, le = rlo, rhi
+
+        ls = max(rlo, min(ls, rhi))
+        le = max(rlo, min(le, rhi))
+        if le < ls:
+            ls, le = le, ls
+        r["loop_start"] = int(ls)
+        r["loop_end"] = int(le)
+
+        _push_edit(
+            "region_loop_point",
+            {
+                "region": str(r.get("name") or "region"),
+                "loop_s": [float(ls) / float(st.sample_rate), float(le) / float(st.sample_rate)],
+                "snapped_zero": True,
+            },
+        )
         _render()
 
     def _delete_active_region() -> None:
@@ -859,9 +938,31 @@ def launch_editor(wav_path: str | Path) -> None:
                     "end_s": float(hi) / float(st.sample_rate),
                     "fx_chain": str(r.get("fx_chain") or "off"),
                     "fx_chain_json": (str(r.get("fx_chain_json")) if r.get("fx_chain_json") is not None else None),
+                    "loop_s": None,
                 },
                 "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
+
+            loop_s = None
+            if r.get("loop_start") is not None and r.get("loop_end") is not None:
+                try:
+                    ls = int(r.get("loop_start") or 0)
+                    le = int(r.get("loop_end") or 0)
+                    if le > ls and ls >= lo and le <= hi:
+                        loop_s = [float(ls - lo) / float(st.sample_rate), float(le - lo) / float(st.sample_rate)]
+                except Exception:
+                    loop_s = None
+            elif st.loop is not None:
+                try:
+                    gls, gle = st.loop
+                    gls = int(gls)
+                    gle = int(gle)
+                    if gle > gls and gls >= lo and gle <= hi:
+                        loop_s = [float(gls - lo) / float(st.sample_rate), float(gle - lo) / float(st.sample_rate)]
+                except Exception:
+                    loop_s = None
+
+            rec["region"]["loop_s"] = loop_s
             sidecar.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
             print(f"Exported region: {out_path}")
@@ -1237,6 +1338,14 @@ def launch_editor(wav_path: str | Path) -> None:
 
         if key in {"C"}:
             _set_active_region_fx_chain()
+            return
+
+        if key in {"{"}:
+            _set_active_region_loop("start")
+            return
+
+        if key in {"}"}:
+            _set_active_region_loop("end")
             return
 
         if key in {"D"}:
