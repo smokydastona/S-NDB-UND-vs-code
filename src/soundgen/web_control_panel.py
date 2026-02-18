@@ -26,6 +26,29 @@ from .ui_models import Variant, normalize_variants_state
 AudioCache = dict[str, tuple[int, np.ndarray]]
 
 
+def _keep_control_panel_wavs() -> bool:
+    v = (
+        os.environ.get("SOUNDGEN_CONTROL_PANEL_KEEP_WAVS")
+        or os.environ.get("SOUNDGEN_CP_KEEP_WAVS")
+        or ""
+    )
+    return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cp_temp_wav_path(variant_id: str) -> Path:
+    d = Path("outputs") / "_tmp"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"cp_{uuid.uuid4().hex}_{str(variant_id)}.wav"
+
+
+def _best_effort_unlink(p: Path) -> None:
+    try:
+        if p.exists() and p.is_file():
+            p.unlink()
+    except Exception:
+        pass
+
+
 def _cache_key(variant_id: str, kind: str) -> str:
     return f"{str(variant_id)}::{str(kind)}"
 
@@ -345,7 +368,7 @@ def _run_generate_variants(
     for i in range(n):
         vid = _variant_id(i)
         seed_i = int(base_seed) + i
-        out_wav = Path("outputs") / f"cp_{uuid.uuid4().hex}_{vid}.wav"
+        out_wav = _cp_temp_wav_path(vid)
 
         def _pp(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
             if not (bool(post) or bool(polish)):
@@ -369,9 +392,15 @@ def _run_generate_variants(
             rfxgen_path=(Path(str(rfxgen_path)) if str(rfxgen_path or "").strip() else None),
         )
 
-        a, sr = read_wav_mono(Path(res.wav_path))
+        wav_p = Path(res.wav_path)
+        a, sr = read_wav_mono(wav_p)
         base_key = _cache_key(vid, "base")
         cache[base_key] = (int(sr), a.astype(np.float32, copy=False))
+
+        if not _keep_control_panel_wavs():
+            _best_effort_unlink(out_wav)
+            if wav_p.resolve() != out_wav.resolve():
+                _best_effort_unlink(wav_p)
         m = compute_metrics(a, int(sr))
         out.append(
             Variant(
@@ -383,7 +412,7 @@ def _run_generate_variants(
                 select=False,
                 audio_key=base_key,
                 edited_audio_key=None,
-                wav_path=str(res.wav_path),
+                wav_path=(str(wav_p) if _keep_control_panel_wavs() else ""),
                 edited_wav_path=None,
                 meta={},
             ).to_dict()
@@ -471,7 +500,7 @@ def _ui_regen_unlocked(
 
             vid = str(v.get("id") or _variant_id(i))
             seed_i = int(bs) + i
-            out_wav = Path("outputs") / f"cp_{uuid.uuid4().hex}_{vid}.wav"
+            out_wav = _cp_temp_wav_path(vid)
 
             def _pp(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
                 if not (bool(post) or bool(polish)):
@@ -495,9 +524,15 @@ def _ui_regen_unlocked(
                 rfxgen_path=(Path(str(rfxgen_path)) if str(rfxgen_path or "").strip() else None),
             )
 
-            a, sr = read_wav_mono(Path(res.wav_path))
+            wav_p = Path(res.wav_path)
+            a, sr = read_wav_mono(wav_p)
             base_key = _cache_key(vid, "base")
             cache[base_key] = (int(sr), a.astype(np.float32, copy=False))
+
+            if not _keep_control_panel_wavs():
+                _best_effort_unlink(out_wav)
+                if wav_p.resolve() != out_wav.resolve():
+                    _best_effort_unlink(wav_p)
             m = compute_metrics(a, int(sr))
             v2 = dict(v)
             v2["seed"] = seed_i
@@ -505,7 +540,7 @@ def _ui_regen_unlocked(
             v2["rms_dbfs"] = _rms_dbfs(float(m.rms))
             v2["audio_key"] = base_key
             v2["edited_audio_key"] = None
-            v2["wav_path"] = str(res.wav_path)
+            v2["wav_path"] = (str(wav_p) if _keep_control_panel_wavs() else "")
             v2["edited_wav_path"] = None
             out.append(v2)
             regen += 1
@@ -1017,7 +1052,7 @@ def build_demo_control_panel() -> gr.Blocks:
             polish_v: bool,
         ) -> tuple[tuple[int, np.ndarray] | None, str]:
             try:
-                variants = _run_generate_variants(
+                variants, cache = _run_generate_variants(
                     engine=str(engine_v),
                     prompt=str(prompt_v),
                     seconds=float(seconds_v),
@@ -1033,10 +1068,10 @@ def build_demo_control_panel() -> gr.Blocks:
                 )
                 if not variants:
                     return None, "Preview produced no output."
-                p = Path(str(variants[0].get("wav_path") or ""))
-                if not p.exists():
-                    return None, "Preview WAV missing."
-                a, sr = read_wav_mono(p)
+                got = _audio_from_variant(variants[0], cache)
+                if got is None:
+                    return None, "Preview audio missing."
+                sr, a = got
                 m = compute_metrics(a, int(sr))
                 return (int(sr), a.astype(np.float32, copy=False)), f"Preview ok: seconds={m.seconds:.2f} rms_dbfs={_fmt_db(_rms_dbfs(float(m.rms)))}"
             except Exception as e:
