@@ -13,3 +13,4 @@ Launch:
 Notes:
 - Audio stays mono `float32` in `[-1, 1]`.
 - Keybinds print to the console when the editor starts (`h` to reprint).
+- v2 (early) multi-region: create regions from selections (`R`) and export slices (`O`). Each region can have an FX chain key set (`C`) that is applied on export.

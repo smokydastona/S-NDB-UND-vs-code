@@ -125,6 +125,8 @@ class _State:
     clipboard: np.ndarray | None = None
     loop: tuple[int, int] | None = None
     markers: list[dict[str, Any]] | None = None
+    regions: list[dict[str, Any]] | None = None
+    active_region: int | None = None
     edits: list[dict[str, Any]] | None = None
     export_count: int = 0
     view_mode: str = "wave"  # wave|spec
@@ -140,6 +142,8 @@ class _State:
             clipboard=None if self.clipboard is None else self.clipboard.copy(),
             loop=None if self.loop is None else (int(self.loop[0]), int(self.loop[1])),
             markers=[] if not self.markers else [dict(m) for m in self.markers],
+            regions=[] if not self.regions else [dict(r) for r in self.regions],
+            active_region=(None if self.active_region is None else int(self.active_region)),
             edits=[] if not self.edits else [dict(e) for e in self.edits],
             export_count=int(self.export_count),
             view_mode=str(self.view_mode),
@@ -264,6 +268,8 @@ def _write_edits_sidecar(wav_path: Path, *, state: _State, mode: str) -> None:
         "selection_s": None,
         "loop_s": None,
         "markers": [],
+        "regions": [],
+        "active_region": (int(state.active_region) if state.active_region is not None else None),
         "edits": list(state.edits or []),
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -282,6 +288,25 @@ def _write_edits_sidecar(wav_path: Path, *, state: _State, mode: str) -> None:
             }
             for m in state.markers
         ]
+
+    if state.regions:
+        out: list[dict[str, Any]] = []
+        for r in state.regions:
+            try:
+                start = int(r.get("start") or 0)
+                end = int(r.get("end") or 0)
+            except Exception:
+                continue
+            out.append(
+                {
+                    "name": str(r.get("name") or "region"),
+                    "start_s": float(start) / float(state.sample_rate),
+                    "end_s": float(end) / float(state.sample_rate),
+                    "fx_chain": (str(r.get("fx_chain")) if r.get("fx_chain") is not None else None),
+                    "fx_chain_json": (str(r.get("fx_chain_json")) if r.get("fx_chain_json") is not None else None),
+                }
+            )
+        rec["regions"] = out
 
     sidecar.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -302,6 +327,14 @@ def _help_text() -> str:
         "  T: auto-mark transients\n"
         "  J: snap selection to nearest transients\n"
         "  A: auto loop points + crossfaded loop segment\n"
+        "\n"
+        "  R: add region from selection\n"
+        "  , / .: previous / next region\n"
+        "  X: select active region\n"
+        "  N: rename active region\n"
+        "  C: set active region FX chain (export hook)\n"
+        "  D: delete active region\n"
+        "  O: export all regions\n"
         "\n"
         "  c: copy selection\n"
         "  x: cut selection\n"
@@ -345,7 +378,16 @@ def launch_editor(wav_path: str | Path) -> None:
         raise FileNotFoundError(str(wav_path))
 
     audio, sr = read_wav_mono(wav_path)
-    st = _State(audio=_clip_mono(audio), sample_rate=int(sr), cursor=0, selection=None, markers=[], edits=[])
+    st = _State(
+        audio=_clip_mono(audio),
+        sample_rate=int(sr),
+        cursor=0,
+        selection=None,
+        markers=[],
+        regions=[],
+        active_region=None,
+        edits=[],
+    )
     undo = _Undo(limit=60)
     player = _Player()
 
@@ -400,6 +442,25 @@ def launch_editor(wav_path: str | Path) -> None:
             b_s = float(b) / float(st.sample_rate)
             ax_wav.axvspan(min(a_s, b_s), max(a_s, b_s), alpha=0.18)
             ax_spec.axvspan(min(a_s, b_s), max(a_s, b_s), alpha=0.18)
+
+        # Regions
+        if st.regions:
+            for idx, r in enumerate(st.regions):
+                try:
+                    a = int(r.get("start") or 0)
+                    b = int(r.get("end") or 0)
+                except Exception:
+                    continue
+                a = max(0, min(a, int(st.audio.size)))
+                b = max(0, min(b, int(st.audio.size)))
+                if b <= a:
+                    continue
+                a_s = float(a) / float(st.sample_rate)
+                b_s = float(b) / float(st.sample_rate)
+                is_active = (st.active_region is not None) and (int(st.active_region) == int(idx))
+                alpha = 0.16 if is_active else 0.08
+                ax_wav.axvspan(a_s, b_s, alpha=alpha)
+                ax_spec.axvspan(a_s, b_s, alpha=alpha)
 
         # Loop
         if st.loop is not None:
@@ -491,6 +552,337 @@ def launch_editor(wav_path: str | Path) -> None:
             return
         _set_cursor(int(round(float(ev.xdata) * float(st.sample_rate))))
         _render()
+
+    def _region_list() -> list[dict[str, Any]]:
+        if st.regions is None:
+            st.regions = []
+        return st.regions
+
+    def _active_region_obj() -> dict[str, Any] | None:
+        if st.active_region is None:
+            return None
+        rr = _region_list()
+        idx = int(st.active_region)
+        if idx < 0 or idx >= len(rr):
+            return None
+        return rr[idx]
+
+    def _set_active_region(idx: int | None) -> None:
+        if idx is None:
+            st.active_region = None
+            return
+        rr = _region_list()
+        if not rr:
+            st.active_region = None
+            return
+        st.active_region = int(max(0, min(int(idx), len(rr) - 1)))
+
+    def _default_region_name() -> str:
+        rr = _region_list()
+        return f"region_{len(rr) + 1:02d}"
+
+    def _add_region_from_selection() -> None:
+        rng = _sel_range()
+        if rng is None:
+            return
+        lo, hi = rng
+        undo.push(st)
+        rr = _region_list()
+        rr.append(
+            {
+                "name": _default_region_name(),
+                "start": int(lo),
+                "end": int(hi),
+                # export hook (off by default)
+                "fx_chain": "off",
+                "fx_chain_json": None,
+            }
+        )
+        _set_active_region(len(rr) - 1)
+        _push_edit("region_add", {"name": str(rr[-1]["name"]), "start": int(lo), "end": int(hi)})
+        _render()
+
+    def _region_prev_next(step: int) -> None:
+        rr = _region_list()
+        if not rr:
+            return
+        if st.active_region is None:
+            _set_active_region(0)
+        else:
+            _set_active_region((int(st.active_region) + int(step)) % len(rr))
+        _push_edit("region_select", {"active": int(st.active_region) if st.active_region is not None else None})
+        _render()
+
+    def _select_active_region() -> None:
+        r = _active_region_obj()
+        if r is None:
+            return
+        try:
+            lo = int(r.get("start") or 0)
+            hi = int(r.get("end") or 0)
+        except Exception:
+            return
+        lo = max(0, min(lo, int(st.audio.size)))
+        hi = max(0, min(hi, int(st.audio.size)))
+        if hi <= lo:
+            return
+        st.selection = (lo, hi)
+        _set_cursor(lo)
+        _push_edit("region_to_selection", {"active": int(st.active_region) if st.active_region is not None else None})
+        _render()
+
+    def _rename_active_region() -> None:
+        r = _active_region_obj()
+        if r is None:
+            return
+        try:
+            new_name = input("Region name: ").strip()
+        except Exception:
+            return
+        if not new_name:
+            return
+        undo.push(st)
+        old = str(r.get("name") or "region")
+        r["name"] = str(new_name)
+        _push_edit("region_rename", {"from": old, "to": str(new_name)})
+        _render()
+
+    def _set_active_region_fx_chain() -> None:
+        r = _active_region_obj()
+        if r is None:
+            return
+        from ..fx_chains import fx_chain_keys
+
+        opts = ["off", *fx_chain_keys()]
+        cur = str(r.get("fx_chain") or "off")
+        try:
+            print("FX chains:")
+            for o in opts:
+                mark = "*" if o == cur else " "
+                print(f"  {mark} {o}")
+            v = input("Set fx_chain (or 'off'): ").strip()
+        except Exception:
+            return
+        if not v:
+            return
+        if v not in opts:
+            print(f"Unknown fx_chain '{v}'.")
+            return
+        undo.push(st)
+        r["fx_chain"] = str(v)
+        _push_edit("region_fx_chain", {"name": str(r.get("name") or "region"), "fx_chain": str(v)})
+        _render()
+
+    def _delete_active_region() -> None:
+        rr = _region_list()
+        if not rr or st.active_region is None:
+            return
+        idx = int(st.active_region)
+        if idx < 0 or idx >= len(rr):
+            return
+        undo.push(st)
+        name = str(rr[idx].get("name") or "region")
+        del rr[idx]
+        if not rr:
+            st.active_region = None
+        else:
+            st.active_region = int(max(0, min(idx, len(rr) - 1)))
+        _push_edit("region_delete", {"name": name})
+        _render()
+
+    def _sanitize_for_filename(s: str) -> str:
+        s2 = (s or "").strip().replace(" ", "_")
+        out = []
+        for ch in s2:
+            if ch.isalnum() or ch in {"_", "-", "."}:
+                out.append(ch)
+        return "".join(out) or "region"
+
+    def _post_params_from_patch(patch: dict[str, Any]) -> "PostProcessParams":
+        from ..postprocess import PostProcessParams
+
+        # Neutral baseline; the chain's post_stack decides what actually runs.
+        params = PostProcessParams(
+            trim_silence=False,
+            fade_ms=0,
+            normalize_rms_db=None,
+            normalize_peak_db=-1.0,
+            highpass_hz=None,
+            lowpass_hz=None,
+            denoise_strength=0.0,
+            transient_amount=0.0,
+            transient_sustain=0.0,
+            exciter_amount=0.0,
+            multiband=False,
+            reverb_preset="off",
+            reverb_mix=0.0,
+            reverb_time_s=1.2,
+            compressor_threshold_db=None,
+            limiter_ceiling_db=None,
+            post_stack="final_clip",
+            noise_bed_db=None,
+        )
+
+        def _get(k: str):
+            return patch.get(k)
+
+        # Map CLI-ish patch keys into PostProcessParams fields.
+        if _get("no_trim") is not None:
+            params = params.__class__(**{**params.__dict__, "trim_silence": (not bool(_get("no_trim")))})
+        if _get("silence_threshold_db") is not None:
+            params = params.__class__(**{**params.__dict__, "silence_threshold_db": float(_get("silence_threshold_db"))})
+        if _get("silence_padding_ms") is not None:
+            params = params.__class__(**{**params.__dict__, "silence_padding_ms": int(_get("silence_padding_ms"))})
+        if _get("fade_ms") is not None:
+            params = params.__class__(**{**params.__dict__, "fade_ms": int(_get("fade_ms"))})
+        if _get("normalize_rms_db") is not None:
+            v = float(_get("normalize_rms_db"))
+            params = params.__class__(**{**params.__dict__, "normalize_rms_db": (None if abs(v) < 1e-9 else v)})
+        if _get("normalize_peak_db") is not None:
+            params = params.__class__(**{**params.__dict__, "normalize_peak_db": float(_get("normalize_peak_db"))})
+        if _get("highpass_hz") is not None:
+            v = float(_get("highpass_hz"))
+            params = params.__class__(**{**params.__dict__, "highpass_hz": (None if abs(v) < 1e-9 else v)})
+        if _get("lowpass_hz") is not None:
+            v = float(_get("lowpass_hz"))
+            params = params.__class__(**{**params.__dict__, "lowpass_hz": (None if abs(v) < 1e-9 else v)})
+        if _get("denoise_amount") is not None:
+            params = params.__class__(**{**params.__dict__, "denoise_strength": float(_get("denoise_amount"))})
+        if _get("transient_attack") is not None:
+            params = params.__class__(**{**params.__dict__, "transient_amount": float(_get("transient_attack"))})
+        if _get("transient_sustain") is not None:
+            params = params.__class__(**{**params.__dict__, "transient_sustain": float(_get("transient_sustain"))})
+        if _get("exciter_amount") is not None:
+            params = params.__class__(**{**params.__dict__, "exciter_amount": float(_get("exciter_amount"))})
+        if _get("multiband") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband": bool(_get("multiband"))})
+        if _get("mb_low_hz") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_low_hz": float(_get("mb_low_hz"))})
+        if _get("mb_high_hz") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_high_hz": float(_get("mb_high_hz"))})
+        if _get("mb_low_gain_db") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_low_gain_db": float(_get("mb_low_gain_db"))})
+        if _get("mb_mid_gain_db") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_mid_gain_db": float(_get("mb_mid_gain_db"))})
+        if _get("mb_high_gain_db") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_high_gain_db": float(_get("mb_high_gain_db"))})
+        if _get("mb_comp_threshold_db") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_comp_threshold_db": float(_get("mb_comp_threshold_db"))})
+        if _get("mb_comp_ratio") is not None:
+            params = params.__class__(**{**params.__dict__, "multiband_comp_ratio": float(_get("mb_comp_ratio"))})
+        if _get("reverb") is not None:
+            params = params.__class__(**{**params.__dict__, "reverb_preset": str(_get("reverb"))})
+        if _get("reverb_mix") is not None:
+            params = params.__class__(**{**params.__dict__, "reverb_mix": float(_get("reverb_mix"))})
+        if _get("reverb_time") is not None:
+            params = params.__class__(**{**params.__dict__, "reverb_time_s": float(_get("reverb_time"))})
+        if _get("reverb_time_s") is not None:
+            params = params.__class__(**{**params.__dict__, "reverb_time_s": float(_get("reverb_time_s"))})
+        if _get("compressor_threshold_db") is not None:
+            params = params.__class__(**{**params.__dict__, "compressor_threshold_db": float(_get("compressor_threshold_db"))})
+        if _get("compressor_ratio") is not None:
+            params = params.__class__(**{**params.__dict__, "compressor_ratio": float(_get("compressor_ratio"))})
+        if _get("compressor_makeup_db") is not None:
+            params = params.__class__(**{**params.__dict__, "compressor_makeup_db": float(_get("compressor_makeup_db"))})
+        if _get("limiter_ceiling_db") is not None:
+            params = params.__class__(**{**params.__dict__, "limiter_ceiling_db": float(_get("limiter_ceiling_db"))})
+        if _get("noise_bed_db") is not None:
+            params = params.__class__(**{**params.__dict__, "noise_bed_db": float(_get("noise_bed_db"))})
+        if _get("post_stack") is not None:
+            params = params.__class__(**{**params.__dict__, "post_stack": str(_get("post_stack"))})
+
+        return params
+
+    def _apply_region_fx(x: np.ndarray, *, sr: int, region: dict[str, Any]) -> np.ndarray:
+        key = str(region.get("fx_chain") or "off").strip()
+        chain_json = region.get("fx_chain_json")
+        patch: dict[str, Any] = {}
+
+        if key and key.lower() != "off":
+            from ..fx_chains import FX_CHAINS
+
+            chain = FX_CHAINS.get(key)
+            if chain is not None and chain.args:
+                patch.update(dict(chain.args))
+
+        if chain_json:
+            from ..fx_chains import load_fx_chain_json
+
+            p2, _, _ = load_fx_chain_json(str(chain_json))
+            patch.update(dict(p2))
+
+        if not patch:
+            return x.astype(np.float32, copy=False)
+
+        from ..postprocess import post_process_audio
+
+        params = _post_params_from_patch(patch)
+        y, _rep = post_process_audio(x.astype(np.float32, copy=False), int(sr), params)
+        return y.astype(np.float32, copy=False)
+
+    def _export_all_regions() -> None:
+        rr = _region_list()
+        if not rr:
+            return
+        for r in rr:
+            try:
+                lo = int(r.get("start") or 0)
+                hi = int(r.get("end") or 0)
+            except Exception:
+                continue
+            lo = max(0, min(lo, int(st.audio.size)))
+            hi = max(0, min(hi, int(st.audio.size)))
+            if hi <= lo:
+                continue
+
+            name = _sanitize_for_filename(str(r.get("name") or "region"))
+            base = wav_path.with_name(f"{wav_path.stem}__{name}{wav_path.suffix}")
+            out_path = base
+            k = 2
+            while out_path.exists():
+                out_path = wav_path.with_name(f"{wav_path.stem}__{name}_{k}{wav_path.suffix}")
+                k += 1
+
+            seg = st.audio[lo:hi].copy()
+            seg2 = _clip_mono(_apply_region_fx(seg, sr=st.sample_rate, region=r))
+            write_wav(out_path, seg2, int(st.sample_rate))
+
+            # Sidecar for region exports (minimal but useful).
+            sidecar = out_path.with_suffix("")
+            sidecar = sidecar.with_name(sidecar.name + ".edits.json")
+            rec = {
+                "source_wav": str(wav_path),
+                "exported_wav": str(out_path),
+                "region": {
+                    "name": str(r.get("name") or "region"),
+                    "start_s": float(lo) / float(st.sample_rate),
+                    "end_s": float(hi) / float(st.sample_rate),
+                    "fx_chain": str(r.get("fx_chain") or "off"),
+                    "fx_chain_json": (str(r.get("fx_chain_json")) if r.get("fx_chain_json") is not None else None),
+                },
+                "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            sidecar.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            print(f"Exported region: {out_path}")
+        _push_edit("export_regions", {"count": int(len(rr))})
+
+    def _apply_state(src: _State) -> None:
+        player.stop()
+        st.audio = src.audio
+        st.sample_rate = src.sample_rate
+        st.cursor = src.cursor
+        st.selection = src.selection
+        st.clipboard = src.clipboard
+        st.loop = src.loop
+        st.markers = src.markers
+        st.regions = src.regions
+        st.active_region = src.active_region
+        st.edits = src.edits
+        st.export_count = src.export_count
+        st.view_mode = src.view_mode
+        st.spec_fft = src.spec_fft
+        st.spec_fmax_hz = src.spec_fmax_hz
 
     def _apply_gain(db: float) -> None:
         rng = _sel_range()
@@ -823,6 +1215,38 @@ def launch_editor(wav_path: str | Path) -> None:
             _auto_loop_crossfade()
             return
 
+        if key in {"R"}:
+            _add_region_from_selection()
+            return
+
+        if key in {","}:
+            _region_prev_next(-1)
+            return
+
+        if key in {"."}:
+            _region_prev_next(+1)
+            return
+
+        if key in {"X"}:
+            _select_active_region()
+            return
+
+        if key in {"N"}:
+            _rename_active_region()
+            return
+
+        if key in {"C"}:
+            _set_active_region_fx_chain()
+            return
+
+        if key in {"D"}:
+            _delete_active_region()
+            return
+
+        if key in {"O"}:
+            _export_all_regions()
+            return
+
         if key in {"s"}:
             player.stop()
             return
@@ -893,32 +1317,14 @@ def launch_editor(wav_path: str | Path) -> None:
         if key in {"u", "ctrl+z"}:
             prev = undo.undo(st)
             if prev is not None:
-                player.stop()
-                st.audio = prev.audio
-                st.sample_rate = prev.sample_rate
-                st.cursor = prev.cursor
-                st.selection = prev.selection
-                st.clipboard = prev.clipboard
-                st.loop = prev.loop
-                st.markers = prev.markers
-                st.edits = prev.edits
-                st.export_count = prev.export_count
+                _apply_state(prev)
                 _render()
             return
 
         if key in {"r", "ctrl+y"}:
             nxt = undo.redo(st)
             if nxt is not None:
-                player.stop()
-                st.audio = nxt.audio
-                st.sample_rate = nxt.sample_rate
-                st.cursor = nxt.cursor
-                st.selection = nxt.selection
-                st.clipboard = nxt.clipboard
-                st.loop = nxt.loop
-                st.markers = nxt.markers
-                st.edits = nxt.edits
-                st.export_count = nxt.export_count
+                _apply_state(nxt)
                 _render()
             return
 
