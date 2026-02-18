@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import traceback
 from pathlib import Path
 import sys
@@ -16,6 +17,14 @@ def _hide_console_window_windows() -> None:
 
     if sys.platform != "win32":
         return
+
+    # If launched from an interactive terminal, do not hide the console.
+    # This keeps `S-NDB-UND.exe web` / `desktop` debuggable.
+    try:
+        if bool(getattr(sys.stdout, "isatty", lambda: False)()) or bool(getattr(sys.stderr, "isatty", lambda: False)()):
+            return
+    except Exception:
+        pass
 
     try:
         import ctypes
@@ -55,7 +64,8 @@ def _print_help() -> None:
 
 def _startup_log_path() -> Path:
     if sys.platform == "win32":
-        base = Path.home() / "AppData" / "Local" / "S-NDB-UND"
+        la = str(os.environ.get("LOCALAPPDATA") or "").strip()
+        base = (Path(la) if la else (Path.home() / "AppData" / "Local")) / "S-NDB-UND"
     else:
         base = Path.home() / ".sndbund"
     return base / "startup.log"
@@ -86,8 +96,8 @@ def _show_error_dialog(title: str, message: str) -> None:
 def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
     """Run a GUI-ish mode safely (console may be hidden on Windows)."""
 
-    _hide_console_window_windows()
     _write_startup_log(f"mode={mode_name} argv={argv!r}")
+    _hide_console_window_windows()
     try:
         return int(fn())
     except SystemExit as e:
@@ -115,6 +125,7 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    _write_startup_log(f"invoke argv={argv!r}")
     # Default: desktop UI.
     if not argv:
         from .desktop import run_desktop
