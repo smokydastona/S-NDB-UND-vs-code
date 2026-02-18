@@ -51,7 +51,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: FX chain editor supports reorder + parameter editing + audition + save
   - **Done gate**: chain format stable + documented
 
-- **v2.4 Project System (Sound Packs & Mobs)** — **Next**
+- **v2.4 Project System (Sound Packs & Mobs)** — **Done**
   - **Done gate**: project create/load + track generated/edited versions + metadata
   - **Done gate**: pack export (Minecraft-ready where applicable) + versioning per sound
   - **Done gate**: Minecraft project mode (generate → edit → export) workflow documented

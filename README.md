@@ -797,6 +797,33 @@ Point `--pack-root` at your mod resources folder and set `--mc-target forge`:
 python -m soundgen.generate --engine rfxgen --minecraft --mc-target forge --pack-root "C:\path\to\YourMod\src\main\resources" --namespace yourmodid --event ui.coin --prompt "coin pickup"
 ```
 
+## Project system (sound packs & mobs)
+
+The project system groups sounds + versions (generated + edited) and supports a Minecraft-ready workflow:
+
+**generate → edit → export**
+
+Docs: `docs/project_system.md`
+
+Quickstart:
+
+```powershell
+# Create a soundpack project
+python -m soundgen.app project create --root projects\mymod_pack --kind soundpack --id mymod_pack --title "My Mod Pack" --namespace mymod --pack-root resourcepack
+
+# Add an item
+python -m soundgen.app project add --root projects\mymod_pack --id ui.coin --category ui --engine rfxgen --prompt "coin pickup" --seconds 0.7 --event ui.coin --sound-path ui/coin --subtitle "Coin" --variants 5 --generate-arg --post
+
+# Build (generates + exports to the project pack + keeps WAVs under project_audio/ for editing)
+python -m soundgen.app project build --root projects\mymod_pack
+```
+
+If you’re generating directly with `soundgen.generate` and want to keep WAVs while exporting to Minecraft, use:
+
+```powershell
+python -m soundgen.generate --minecraft --mc-wav-dir outputs\keep_wavs --namespace mymod --event ui.coin --sound-path ui/coin --variants 3 --prompt "coin pickup" --engine rfxgen
+```
+
 ## Batch generation (manifest)
 
 Create a JSON manifest (example: `sounds.json`):

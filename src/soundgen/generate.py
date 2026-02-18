@@ -270,6 +270,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Channels for Minecraft .ogg export: 1 mono or 2 stereo (default 1).",
     )
 
+    p.add_argument(
+        "--mc-wav-dir",
+        default="",
+        help=(
+            "When --minecraft: also write WAV variant(s) to this folder (instead of a temp folder). "
+            "This enables a generate → edit → export workflow."
+        ),
+    )
+
     # Post-processing / QA
     p.add_argument("--post", action="store_true", help="Enable post-processing (trim/fade/normalize/EQ).")
     p.add_argument(
@@ -988,6 +997,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Minecraft playsound id: {namespace}:{event}")
         return ogg_path
 
+    keep_mc_wavs = bool(str(getattr(args, "mc_wav_dir", "") or "").strip())
+
     def _write_credits(*, sound_path: str, wav_path: Path | None, ogg_path: Path | None, generated: GeneratedWav) -> None:
         data: dict[str, object] = {
             "engine": str(args.engine),
@@ -1010,7 +1021,7 @@ def main(argv: list[str] | None = None) -> int:
         if generated.sources:
             data["sources"] = list(generated.sources)
 
-        if wav_path is not None and not args.minecraft:
+        if wav_path is not None and (not args.minecraft or keep_mc_wavs):
             write_sidecar_credits(Path(wav_path), data)
         if ogg_path is not None and args.minecraft:
             pack_root = Path(args.pack_root)
@@ -1189,11 +1200,54 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.minecraft:
-        with tempfile.TemporaryDirectory() as tmp:
-            base_sound_path = args.sound_path or f"generated/{slug}"
-            variants = max(1, int(args.variants))
-            base_seed = args.seed if args.seed is not None else 1337
+        base_sound_path = args.sound_path or f"generated/{slug}"
+        variants = max(1, int(args.variants))
+        base_seed = args.seed if args.seed is not None else 1337
 
+        def _safe_base_name(sound_path: str) -> str:
+            # Keep filenames stable and Windows-friendly. This is only for WAV filenames.
+            s = str(sound_path).strip().replace("\\", "/")
+            s = s.replace("/", "_").replace(".", "_")
+            return s or "sound"
+
+        wav_base = _safe_base_name(base_sound_path)
+        mc_wav_dir_s = str(getattr(args, "mc_wav_dir", "") or "").strip()
+
+        if mc_wav_dir_s:
+            wav_dir = Path(mc_wav_dir_s)
+            wav_dir.mkdir(parents=True, exist_ok=True)
+
+            for i in range(variants):
+                suffix = f"_{i+1:02d}" if variants > 1 else ""
+                wav_path = wav_dir / f"{wav_base}{suffix}.wav"
+
+                if args.engine in {"diffusers", "stable_audio_open", "samplelib", "synth"}:
+                    seed_i = int(base_seed) + i
+                elif args.engine == "layered":
+                    seed_i = int(base_seed) if args.layered_family else (int(base_seed) + i)
+                else:
+                    seed_i = None
+
+                source_seed_i: int | None = None
+                if args.engine == "layered" and args.layered_source_lock:
+                    source_seed_i = (
+                        int(args.layered_source_seed)
+                        if args.layered_source_seed is not None
+                        else int(base_seed)
+                    )
+
+                # In kept-wav mode, always write to the requested wav path (including replicate).
+                generated = _gen_one(out_wav=wav_path, seed=seed_i, variant_index=i, source_seed=source_seed_i)
+                if generated.post_info:
+                    print(generated.post_info)
+
+                sp = f"{base_sound_path}{suffix}"
+                ogg = export_if_minecraft(generated.wav_path, sound_path=sp)
+                _write_credits(sound_path=sp, wav_path=Path(generated.wav_path), ogg_path=ogg, generated=generated)
+            return 0
+
+        # Default behavior: keep no WAVs (use temp folder) and only write pack credits.
+        with tempfile.TemporaryDirectory() as tmp:
             for i in range(variants):
                 suffix = f"_{i+1:02d}" if variants > 1 else ""
                 tmp_wav = Path(tmp) / f"{args.engine}{suffix}.wav"
@@ -1206,10 +1260,15 @@ def main(argv: list[str] | None = None) -> int:
 
                 source_seed_i: int | None = None
                 if args.engine == "layered" and args.layered_source_lock:
-                    source_seed_i = int(args.layered_source_seed) if args.layered_source_seed is not None else int(base_seed)
+                    source_seed_i = (
+                        int(args.layered_source_seed)
+                        if args.layered_source_seed is not None
+                        else int(base_seed)
+                    )
                 # Preserve previous behavior: replicate writes to --out even when --minecraft.
                 if args.engine == "replicate":
                     tmp_wav = out_path
+
                 generated = _gen_one(out_wav=tmp_wav, seed=seed_i, variant_index=i, source_seed=source_seed_i)
                 if generated.post_info:
                     print(generated.post_info)
