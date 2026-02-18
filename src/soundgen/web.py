@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import uuid
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -1246,7 +1249,7 @@ def _generate(
     return last_download, playsound, info, wav_img, spec_img
 
 
-def build_demo() -> gr.Blocks:
+def build_demo_legacy() -> gr.Blocks:
     with gr.Blocks(title="S-NDB-UND") as demo:
         gr.Markdown(
             "# S-NDB-UND — Prompt → Sound Effect\n"
@@ -2009,6 +2012,17 @@ def build_demo() -> gr.Blocks:
                 )
 
     return demo
+
+
+# Keep the previous, accordion-heavy UI available for reference/debugging.
+build_demo_legacy = build_demo
+
+
+def build_demo() -> gr.Blocks:
+    from .web_control_panel import build_demo_control_panel
+    if str(os.environ.get("SOUNDGEN_WEB_UI", "")).strip().lower() == "legacy":
+        return build_demo_legacy()
+    return build_demo_control_panel()
 
 
 def main() -> None:
