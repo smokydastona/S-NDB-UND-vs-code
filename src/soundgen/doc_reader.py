@@ -166,6 +166,7 @@ def extract_sound_prompts(text: str) -> list[dict[str, str]]:
                 allowed = {
                     "engine",
                     "seconds",
+                    "candidates",
                     "variants",
                     "sound_path",
                     "seed",

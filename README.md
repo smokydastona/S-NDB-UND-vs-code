@@ -770,6 +770,8 @@ If you’re using a multi-entry Markdown doc (like `pre_gen_sound/pregen_sound_b
 
 Supported keys include the usual basics (`engine`, `seconds`, `variants`, `sound_path`, `seed`, `preset`, `weight`, `volume`, `pitch`) plus Stable Audio Open controls:
 
+- `candidates`
+
 - `stable_audio_model`
 - `stable_audio_negative_prompt`
 - `stable_audio_steps`

@@ -59,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--volume", type=float, default=1.0)
     p.add_argument("--pitch", type=float, default=1.0)
 
+    p.add_argument(
+        "--candidates",
+        type=int,
+        default=1,
+        help="Generate N candidates per output and pick the best using QA metrics (default 1). Doc entry can override with Manifest: candidates=N.",
+    )
+
     p.add_argument("--subtitle", default=None, help="Subtitle text (optional). If omitted, uses file stem.")
     p.add_argument("--post", action="store_true", help="Enable post-processing chain (recommended).")
 
@@ -320,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
                 prefer_doc = bool(args.prefer_doc_manifest)
                 engine = (str(e.get("engine") or "").strip() if prefer_doc else "") or args.engine
                 seconds_s = (str(e.get("seconds") or "").strip() if prefer_doc else "")
+                candidates_s = (str(e.get("candidates") or "").strip() if prefer_doc else "")
                 variants_s = (str(e.get("variants") or "").strip() if prefer_doc else "")
                 sound_path_from_doc = (str(e.get("sound_path") or "").strip() if prefer_doc else "")
 
@@ -355,6 +363,13 @@ def main(argv: list[str] | None = None) -> int:
                     except ValueError:
                         pass
 
+                candidates = max(1, int(args.candidates))
+                if candidates_s:
+                    try:
+                        candidates = max(1, int(float(candidates_s)))
+                    except ValueError:
+                        pass
+
                 variants = max(1, int(args.variants))
                 if variants_s:
                     try:
@@ -374,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
                     event=event,
                     sound_path=sound_path,
                     seconds=float(seconds),
+                    candidates=int(candidates),
                     seed=int(seed) if seed is not None else None,
                     preset=preset,
 
@@ -440,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
             event=event,
             sound_path=sound_path,
             seconds=float(args.seconds),
+            candidates=max(1, int(args.candidates)),
             seed=args.seed,
             preset=args.preset,
 
