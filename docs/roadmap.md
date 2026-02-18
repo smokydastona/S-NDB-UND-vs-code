@@ -85,11 +85,19 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
     - **Markers**: mark transients, loop points, “good takes”.
     - **Playback**: play from cursor, play selection, loop selection.
     - **Export**: overwrite, “save as new variation” (auto suffix: `_edit1`, `_trim`, `_loopfix`, …).
+  - **Kira-inspired realtime preview layer (editor playback)**
+    - Inspiration: https://github.com/tesselode/kira (tweens, mixer tracks + FX, clocks, spatial audio).
+    - **Backend-agnostic playback engine**: abstract a small `AudioManager`-like layer so editor playback isn’t tied to one library.
+    - **Tweens / ramps for click-free control**: smooth parameter changes (gain, pan, playback rate) to avoid zipper noise and clicks.
+    - **Mixer-style tracks**: master track + optional preview sub-track(s) for audition-only FX.
+    - **Preview FX chain**: lightweight effects for monitoring (e.g., low-pass “muffle”, simple filter) separate from offline post chain.
+    - **Clock/scheduling (minimal v1)**: schedule “play selection” / “loop audition” precisely and reproducibly (no UI metronome requirement).
   - Tech stack (Python): PySide6/PyQt6 + (pyqtgraph **or** downsampled QPainter) + sounddevice for playback; processing remains numpy/scipy.
   - **v2 nice-to-haves (Later)**:
     - Spectrogram view (click/noise hunting).
     - Multi-region per file (slice one WAV into multiple exports).
     - Simple layering (overlay 2–3 sounds; not full multitrack).
+    - Spatial preview (game-ish): stereo panning + distance attenuation; later: Doppler-style pitch shift.
 
 ## Phase 4 — Ecosystem & expansion (3.0 → 4.0)
 
