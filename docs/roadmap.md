@@ -30,7 +30,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later (optional)**
 
 v2 is considered **complete** when every section below is **Done** end-to-end (code + docs + wired into CLI/GUI where applicable).
 
-- **v2.1 Editor v2** — **Next**
+- **v2.1 Editor v2** — **Done**
   - **Done gate**: spectrogram view w/ adjustable FFT + frequency zoom + click-removal targeting
   - **Done gate**: transient detection + snap-to-transient + usable UX for selection snapping
   - **Done gate**: multi-region workflow (name regions, slice/export, delete, navigate)

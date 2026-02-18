@@ -218,6 +218,14 @@ class _State:
     spec_fmax_hz: float | None = None
 
     def clone(self) -> "_State":
+        layers: list[dict[str, Any]] = []
+        if self.layers:
+            for l in self.layers:
+                ll = dict(l)
+                a = ll.get("audio")
+                if isinstance(a, np.ndarray):
+                    ll["audio"] = a.astype(np.float32, copy=True)
+                layers.append(ll)
         return _State(
             audio=self.audio.copy(),
             sample_rate=int(self.sample_rate),
@@ -228,7 +236,7 @@ class _State:
             markers=[] if not self.markers else [dict(m) for m in self.markers],
             regions=[] if not self.regions else [dict(r) for r in self.regions],
             active_region=(None if self.active_region is None else int(self.active_region)),
-            layers=[] if not self.layers else [dict(l) for l in self.layers],
+            layers=layers,
             active_layer=(None if self.active_layer is None else int(self.active_layer)),
             edits=[] if not self.edits else [dict(e) for e in self.edits],
             export_count=int(self.export_count),
@@ -405,7 +413,14 @@ def _write_edits_sidecar(wav_path: Path, *, state: _State, mode: str) -> None:
         rec["regions"] = out
 
     if state.layers:
-        rec["layers"] = [dict(l) for l in state.layers]
+        out_layers: list[dict[str, Any]] = []
+        for l in state.layers:
+            ll = dict(l)
+            a = ll.pop("audio", None)
+            if isinstance(a, np.ndarray):
+                ll["samples"] = int(a.size)
+            out_layers.append(ll)
+        rec["layers"] = out_layers
 
     sidecar.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
