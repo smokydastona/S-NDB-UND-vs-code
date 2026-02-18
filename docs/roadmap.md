@@ -8,6 +8,19 @@ For model ecosystem notes (what’s worth copying, what’s risky), see `docs/au
 
 Legend: **Done** / **In repo (basic)** / **Next** / **Later (optional)**
 
+---
+
+# v2 — Professional Sound‑Design Environment (Spec)
+
+- Spec doc: [docs/v2_spec.md](v2_spec.md)
+- Status: **Next** (multi-iteration)
+
+## v2 Editor (early)
+
+- **In repo (basic)**: spectrogram view toggle + adjustable FFT + frequency zoom (`S`/`F`/`Z`)
+- **In repo (basic)**: transient detection auto-mark + snap selection to transient (`T`/`J`)
+- **In repo (basic)**: auto loop points + auto-crossfade loop creation (`A`)
+
 ## Phase 1 — Core foundations (toward 1.0)
 
 - **1.1 Multi‑engine architecture** — **Done**

@@ -127,6 +127,9 @@ class _State:
     markers: list[dict[str, Any]] | None = None
     edits: list[dict[str, Any]] | None = None
     export_count: int = 0
+    view_mode: str = "wave"  # wave|spec
+    spec_fft: int = 1024
+    spec_fmax_hz: float | None = None
 
     def clone(self) -> "_State":
         return _State(
@@ -139,6 +142,9 @@ class _State:
             markers=[] if not self.markers else [dict(m) for m in self.markers],
             edits=[] if not self.edits else [dict(e) for e in self.edits],
             export_count=int(self.export_count),
+            view_mode=str(self.view_mode),
+            spec_fft=int(self.spec_fft),
+            spec_fmax_hz=(None if self.spec_fmax_hz is None else float(self.spec_fmax_hz)),
         )
 
 
@@ -290,6 +296,13 @@ def _help_text() -> str:
         "  l: loop selection (play selection repeatedly)\n"
         "  s: stop\n"
         "\n"
+        "  S: toggle spectrogram view\n"
+        "  F: cycle spectrogram FFT size\n"
+        "  Z: cycle spectrogram frequency zoom\n"
+        "  T: auto-mark transients\n"
+        "  J: snap selection to nearest transients\n"
+        "  A: auto loop points + crossfaded loop segment\n"
+        "\n"
         "  c: copy selection\n"
         "  x: cut selection\n"
         "  v: paste at cursor\n"
@@ -343,18 +356,15 @@ def launch_editor(wav_path: str | Path) -> None:
     import matplotlib.pyplot as plt
     from matplotlib.widgets import SpanSelector
 
-    fig, ax = plt.subplots(figsize=(11, 4))
+    fig, (ax_wav, ax_spec) = plt.subplots(
+        nrows=2,
+        ncols=1,
+        sharex=True,
+        figsize=(11, 6),
+        gridspec_kw={"height_ratios": [2.1, 1.2]},
+    )
     fig.canvas.manager.set_window_title(f"S-NDB-UND Editor — {wav_path.name}")
-    ax.set_title(wav_path.name)
-    ax.set_xlabel("Samples")
-    ax.set_ylabel("Amplitude")
-    ax.set_ylim(-1.05, 1.05)
-
-    line = None
-    cursor_line = ax.axvline(0, color="tab:orange", linewidth=1)
-    sel_patch = None
-    loop_lines: list[Any] = []
-    marker_lines: list[Any] = []
+    fig.tight_layout()
 
     def _clear_artist(artist: Any) -> None:
         try:
@@ -365,38 +375,41 @@ def launch_editor(wav_path: str | Path) -> None:
             return
 
     def _render() -> None:
-        nonlocal line, sel_patch, loop_lines, marker_lines
+        ax_wav.cla()
+        ax_wav.set_title(wav_path.name)
+        ax_wav.set_ylabel("Amplitude")
+        ax_wav.set_ylim(-1.05, 1.05)
 
-        ax.cla()
-        ax.set_title(wav_path.name)
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Amplitude")
-        ax.set_ylim(-1.05, 1.05)
+        ax_spec.cla()
+        ax_spec.set_xlabel("Time (s)")
+        ax_spec.set_ylabel("Hz")
 
-        # Use current view width to decide downsample density.
         max_points = 4000
         t, y = _downsample_for_display(st.audio, max_points=max_points)
         tt = t / float(st.sample_rate)
-        line = ax.plot(tt, y, color="tab:blue", linewidth=0.8)[0]
+        ax_wav.plot(tt, y, linewidth=0.8)
 
-        # Cursor
         cur_s = float(st.cursor) / float(st.sample_rate)
-        ax.axvline(cur_s, color="tab:orange", linewidth=1)
+        ax_wav.axvline(cur_s, linewidth=1)
+        ax_spec.axvline(cur_s, linewidth=1)
 
         # Selection
         if st.selection is not None:
             a, b = st.selection
             a_s = float(a) / float(st.sample_rate)
             b_s = float(b) / float(st.sample_rate)
-            ax.axvspan(min(a_s, b_s), max(a_s, b_s), color="tab:green", alpha=0.18)
+            ax_wav.axvspan(min(a_s, b_s), max(a_s, b_s), alpha=0.18)
+            ax_spec.axvspan(min(a_s, b_s), max(a_s, b_s), alpha=0.18)
 
         # Loop
         if st.loop is not None:
             a, b = st.loop
             a_s = float(a) / float(st.sample_rate)
             b_s = float(b) / float(st.sample_rate)
-            ax.axvline(a_s, color="tab:purple", linewidth=1)
-            ax.axvline(b_s, color="tab:purple", linewidth=1)
+            ax_wav.axvline(a_s, linewidth=1)
+            ax_wav.axvline(b_s, linewidth=1)
+            ax_spec.axvline(a_s, linewidth=1)
+            ax_spec.axvline(b_s, linewidth=1)
 
         # Markers
         if st.markers:
@@ -404,13 +417,27 @@ def launch_editor(wav_path: str | Path) -> None:
                 ms = int(m.get("sample") or 0)
                 kind = str(m.get("kind") or "marker").strip().lower()
                 m_s = float(ms) / float(st.sample_rate)
-                color = "tab:red"
-                if kind == "transient":
-                    color = "tab:purple"
-                elif kind == "good":
-                    color = "tab:green"
-                ax.axvline(m_s, color=color, linewidth=0.9, alpha=0.9)
+                ax_wav.axvline(m_s, linewidth=0.9, alpha=0.9)
+                ax_spec.axvline(m_s, linewidth=0.9, alpha=0.9)
 
+        # Spectrogram
+        show_spec = str(st.view_mode).strip().lower() == "spec"
+        ax_spec.set_visible(show_spec)
+        if show_spec:
+            nfft = int(st.spec_fft)
+            nfft = max(256, min(nfft, 8192))
+            noverlap = int(nfft // 2)
+            ax_spec.specgram(
+                st.audio,
+                NFFT=nfft,
+                Fs=float(st.sample_rate),
+                noverlap=noverlap,
+                scale="dB",
+                cmap=None,
+            )
+            fmax = st.spec_fmax_hz
+            if fmax is not None:
+                ax_spec.set_ylim(0.0, float(max(100.0, min(float(fmax), float(st.sample_rate) / 2.0))))
         fig.canvas.draw_idle()
 
     def _push_edit(kind: str, extra: dict[str, Any] | None = None) -> None:
@@ -448,10 +475,17 @@ def launch_editor(wav_path: str | Path) -> None:
         st.selection = (a, b)
         _render()
 
-    span = SpanSelector(ax, _on_select, "horizontal", useblit=True, interactive=True, props=dict(alpha=0.2, facecolor="tab:green"))
+    span = SpanSelector(
+        ax_wav,
+        _on_select,
+        "horizontal",
+        useblit=True,
+        interactive=True,
+        props=dict(alpha=0.2),
+    )
 
     def _on_click(ev: Any) -> None:
-        if ev.inaxes != ax:
+        if ev.inaxes not in {ax_wav, ax_spec}:
             return
         if ev.xdata is None:
             return
@@ -643,6 +677,119 @@ def launch_editor(wav_path: str | Path) -> None:
             return
         player.play_segment(audio=st.audio, sr=st.sample_rate, start=lo, end=hi, loop=loop)
 
+    def _toggle_spec() -> None:
+        st.view_mode = "spec" if str(st.view_mode).strip().lower() != "spec" else "wave"
+        _push_edit("view", {"mode": st.view_mode})
+        _render()
+
+    def _cycle_fft() -> None:
+        sizes = [256, 512, 1024, 2048, 4096]
+        cur = int(st.spec_fft)
+        if cur not in sizes:
+            st.spec_fft = 1024
+        else:
+            st.spec_fft = sizes[(sizes.index(cur) + 1) % len(sizes)]
+        _push_edit("spec_fft", {"nfft": int(st.spec_fft)})
+        _render()
+
+    def _cycle_fzoom() -> None:
+        nyq = float(st.sample_rate) / 2.0
+        opts: list[float | None] = [2000.0, 8000.0, None]
+        cur = st.spec_fmax_hz
+        idx = 0
+        for i, o in enumerate(opts):
+            if (o is None and cur is None) or (o is not None and cur is not None and abs(float(o) - float(cur)) < 1e-6):
+                idx = i
+                break
+        nxt = opts[(idx + 1) % len(opts)]
+        if nxt is not None:
+            nxt = float(min(float(nxt), nyq))
+        st.spec_fmax_hz = nxt
+        _push_edit("spec_fzoom", {"fmax_hz": None if nxt is None else float(nxt)})
+        _render()
+
+    def _detect_transients() -> None:
+        # Simple transient detector: energy envelope derivative peaks.
+        x = st.audio.astype(np.float32, copy=False)
+        sr2 = int(st.sample_rate)
+        win = max(8, int(0.005 * sr2))  # 5ms abs smoothing
+        absx = np.abs(x)
+        kernel = np.ones(win, dtype=np.float32) / float(win)
+        env = np.convolve(absx, kernel, mode="same")
+        d = np.diff(env, prepend=env[:1])
+
+        thr = float(np.mean(d) + 3.5 * (np.std(d) + 1e-9))
+        min_gap = max(1, int(0.060 * sr2))
+
+        peaks: list[int] = []
+        last = -10**9
+        for i in range(1, int(d.size) - 1):
+            if d[i] > thr and d[i] >= d[i - 1] and d[i] >= d[i + 1]:
+                if i - last >= min_gap:
+                    peaks.append(i)
+                    last = i
+
+        # Remove old transient markers and add new ones.
+        kept: list[dict[str, Any]] = []
+        for m in (st.markers or []):
+            if str(m.get("kind") or "").strip().lower() != "transient":
+                kept.append(m)
+        for p in peaks:
+            kept.append({"kind": "transient", "sample": int(p)})
+        kept.sort(key=lambda m: int(m.get("sample") or 0))
+        st.markers = kept
+        _push_edit("detect_transients", {"count": int(len(peaks)), "threshold": float(thr)})
+        _render()
+
+    def _snap_selection_to_transients() -> None:
+        rng = _sel_range()
+        if rng is None:
+            return
+        lo, hi = rng
+        trans = [int(m.get("sample") or 0) for m in (st.markers or []) if str(m.get("kind") or "").strip().lower() == "transient"]
+        if not trans:
+            return
+
+        def _nearest(v: int) -> int:
+            best = trans[0]
+            best_d = abs(best - v)
+            for t in trans[1:]:
+                dd = abs(int(t) - v)
+                if dd < best_d:
+                    best_d = dd
+                    best = int(t)
+            return int(best)
+
+        st.selection = (_nearest(lo), _nearest(hi))
+        _push_edit("snap_transients", {})
+        _render()
+
+    def _auto_loop_crossfade() -> None:
+        from ..loop_suite import apply_loop_crossfade, find_auto_loop_points
+
+        undo.push(st)
+        res = find_auto_loop_points(st.audio, st.sample_rate, min_loop_s=1.5, max_loop_s=10.0)
+        seg = apply_loop_crossfade(
+            st.audio,
+            loop_start=res.loop_start,
+            loop_end=res.loop_end,
+            crossfade_ms=40.0,
+            sr=st.sample_rate,
+        )
+        st.audio = _clip_mono(seg)
+        st.cursor = 0
+        st.selection = None
+        st.loop = (0, int(st.audio.size))
+        _push_edit(
+            "auto_loop",
+            {
+                "score": float(res.score),
+                "loop_len_s": float((res.loop_end - res.loop_start) / float(st.sample_rate)),
+                "crossfade_ms": 40.0,
+            },
+        )
+        _render()
+
     def _on_key(ev: Any) -> None:
         key = str(getattr(ev, "key", "") or "")
         if not key:
@@ -650,6 +797,30 @@ def launch_editor(wav_path: str | Path) -> None:
 
         if key in {"h"}:
             print(_help_text())
+            return
+
+        if key in {"S"}:
+            _toggle_spec()
+            return
+
+        if key in {"F"}:
+            _cycle_fft()
+            return
+
+        if key in {"Z"}:
+            _cycle_fzoom()
+            return
+
+        if key in {"T"}:
+            _detect_transients()
+            return
+
+        if key in {"J"}:
+            _snap_selection_to_transients()
+            return
+
+        if key in {"A"}:
+            _auto_loop_crossfade()
             return
 
         if key in {"s"}:
