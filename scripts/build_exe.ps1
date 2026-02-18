@@ -20,6 +20,9 @@ python -m pip install pyinstaller | Out-Null
 # Ensure runtime deps are present (uses requirements.txt)
 python -m pip install -r requirements.txt | Out-Null
 
+# Ensure the local project package itself is importable for PyInstaller analysis.
+python -m pip install -e . | Out-Null
+
 # Build the executable (folder-based /onedir for reliability)
 # Note: AI engines (torch/diffusers/transformers) make these builds large.
 $baseAppName = "S-NDB-UND"
@@ -32,7 +35,8 @@ if ($Version -and $Version.Trim().Length -gt 0) {
 $commonArgs = @(
   "--noconfirm",
   "--clean",
-  "--onedir"
+  "--onedir",
+  "--paths", "src"
 )
 
 $commonCollect = @(
@@ -67,7 +71,7 @@ $appArgs += $commonCollect
 $appArgs += @(
   "--distpath", $OutDir,
   "--workpath", $WorkDir,
-  "src/soundgen/app.py"
+  "sndbund_entry.py"
 )
 
 Invoke-PyInstaller -Args $appArgs
