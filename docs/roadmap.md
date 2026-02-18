@@ -92,6 +92,14 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
     - **Mixer-style tracks**: master track + optional preview sub-track(s) for audition-only FX.
     - **Preview FX chain**: lightweight effects for monitoring (e.g., low-pass “muffle”, simple filter) separate from offline post chain.
     - **Clock/scheduling (minimal v1)**: schedule “play selection” / “loop audition” precisely and reproducibly (no UI metronome requirement).
+  - **Resound-inspired DSP bus model (editor playback)**
+    - Inspiration: https://github.com/SolarLune/resound (DSP channels / buses + ordered effect stacks).
+    - **DSP channels (buses)**: route preview playback through named buses (e.g., `preview_master`, `preview_fx`) for shared volume/pan/filter.
+    - **Ordered effects stack**: keep effect order explicit and user-visible for preview (Delay → Distort → Volume etc).
+    - **Effects wrap a stream**: model preview FX as wrappers around the playback stream so it stays composable.
+    - **Pitfalls to avoid** (called out by Resound):
+      - Tail-extending FX (reverb/delay) must not be hard-cut when the source ends (editor should optionally render/drain tails).
+      - Realtime parameter changes need synchronization to avoid racey reads/writes (thread-safe params or audio-thread ownership).
   - Tech stack (Python): PySide6/PyQt6 + (pyqtgraph **or** downsampled QPainter) + sounddevice for playback; processing remains numpy/scipy.
   - **v2 nice-to-haves (Later)**:
     - Spectrogram view (click/noise hunting).
