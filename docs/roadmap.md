@@ -4,6 +4,8 @@ This doc maps the aspirational roadmap to what exists in the repo today, and wha
 
 For a tight definition of “one‑stop shop” (and a buildable MVP scope), see `docs/one_stop_shop.md`.
 
+For model ecosystem notes (what’s worth copying, what’s risky), see `docs/audio_generation_landscape.md`.
+
 Legend: **Done** / **In repo (basic)** / **Next** / **Later**
 
 ## Phase 1 — Core foundations (toward 1.0)
@@ -53,6 +55,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
   - Dataset export tool exists: `python -m soundgen.creature_finetune prepare …`
   - Inference-time LoRA loading exists for `stable_audio_open` (creature families).
   - Next step: provide training recipes for one or two popular stacks (diffusers+accelerate recommended).
+  - Also: add a license-aware “engine plugin” guide (many state-of-the-art weights are non-commercial).
 
 - **3.3 Multi‑engine blending** — **Done (layered v1)**
   - `layered` mixes samplelib transient/tail with synth body.
@@ -68,6 +71,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
   - Envelope follower utilities shared by transient/ducking-style tools.
   - Ducking / sidechain-style polish (offline “duck bed under transients”).
   - Offline effect stack abstraction (configurable post stack + presets).
+  - Next: make “best-of-N candidate generation” a consistent cross-engine feature (generate N → score → keep best → record decision).
 
 - **3.6 Built-in SFX editor (laser-focused, not a DAW)** — **Next (v1)**
   - Goal: a small, destructive single-file editor for generated SFX and WAVs from disk.
@@ -106,6 +110,7 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
     - Multi-region per file (slice one WAV into multiple exports).
     - Simple layering (overlay 2–3 sounds; not full multitrack).
     - Spatial preview (game-ish): stereo panning + distance attenuation; later: Doppler-style pitch shift.
+    - AI-assisted repair tools (optional): inpaint/replace selection, extend tail, audio-to-audio “style transfer” for seam fixing.
 
 ## Phase 4 — Ecosystem & expansion (3.0 → 4.0)
 
