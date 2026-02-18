@@ -140,6 +140,26 @@ See the full status + milestones in [docs/roadmap.md](docs/roadmap.md).
 - Windows training notes for creature-family LoRAs: [docs/creature_family_training_windows.md](docs/creature_family_training_windows.md)
 - Some features still require external tools (e.g. `ffmpeg` on PATH for MP3/OGG export).
 
+## One-stop shop (v1) vision
+
+S-NDB-UND’s v1 target is a single integrated workflow:
+
+- Generate (AI + procedural)
+- Polish (FX chains + post)
+- Quick-edit (trim/fade/normalize/loop audition)
+- Organize/batch (presets, variations, metadata)
+- Export directly to the game (Minecraft first)
+
+Design/spec docs:
+
+- One-stop shop definition + phased scope: [docs/one_stop_shop.md](docs/one_stop_shop.md)
+- Built-in editor v1 UI layout + interactions: [docs/editor_v1_ui_layout.md](docs/editor_v1_ui_layout.md)
+
+Preset library v1 (drop-in example file):
+
+- [configs/sfx_presets_v1.example.json](configs/sfx_presets_v1.example.json)
+	- Copy to `library/sfx_presets.json` if you want it to act as a local override.
+
 ## In-repo demo sound pack (v1)
 
 This repo includes a small, curated demo pack under [soundpack_v1/README.md](soundpack_v1/README.md).

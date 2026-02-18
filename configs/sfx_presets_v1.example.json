@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "notes": [
+    "S‑NDB‑UND v1 preset library (example).",
+    "Copy to library/sfx_presets.json to treat it as a local override.",
+    "Fields are designed to map cleanly to soundgen CLI flags, but this file is also useful as pure documentation."
+  ],
+  "presets": [
+    {
+      "name": "creature_small_chitter",
+      "engine": "stable_audio_open",
+      "prompt": "tiny creature chittering, rapid clicking chirps, skittery, close-mic, game sfx, no music",
+      "negative_prompt": "music, melody, singing, speech, voiceover, reverb tail",
+      "seconds": 1.6,
+      "seed": null,
+      "variation_strength": 0.35,
+      "fx_chain": "creature_grit",
+      "post": true,
+      "engine_params": {
+        "stable_audio_model": "stabilityai/stable-audio-open-1.0",
+        "stable_audio_steps": 100,
+        "stable_audio_guidance_scale": 7.0,
+        "stable_audio_sampler": "auto"
+      }
+    },
+    {
+      "name": "creature_medium_roar",
+      "engine": "stable_audio_open",
+      "prompt": "deep guttural roar, resonant chest cavity, aggressive creature vocalization, game sfx, no music",
+      "negative_prompt": "music, melody, singing, speech, voiceover",
+      "seconds": 4.0,
+      "seed": null,
+      "variation_strength": 0.35,
+      "fx_chain": "creature_grit",
+      "post": true,
+      "engine_params": {
+        "stable_audio_model": "stabilityai/stable-audio-open-1.0",
+        "stable_audio_steps": 100,
+        "stable_audio_guidance_scale": 7.5,
+        "stable_audio_sampler": "auto"
+      }
+    },
+    {
+      "name": "creature_large_bellow",
+      "engine": "stable_audio_open",
+      "prompt": "massive creature bellow, low frequency rumble, long chesty exhale, cinematic but game-ready, no music",
+      "negative_prompt": "music, melody, singing, speech, voiceover",
+      "seconds": 5.0,
+      "seed": null,
+      "variation_strength": 0.35,
+      "fx_chain": "creature_grit",
+      "post": true,
+      "engine_params": {
+        "stable_audio_model": "stabilityai/stable-audio-open-1.0",
+        "stable_audio_steps": 110,
+        "stable_audio_guidance_scale": 7.5,
+        "stable_audio_sampler": "auto"
+      }
+    },
+    {
+      "name": "ambient_cave_drip",
+      "engine": "stable_audio_open",
+      "prompt": "cave ambience, occasional water drips, damp stone room tone, subtle air movement, seamless loopable, no music",
+      "negative_prompt": "music, melody, singing, speech, voiceover, footsteps",
+      "seconds": 10.0,
+      "seed": null,
+      "variation_strength": 0.25,
+      "fx_chain": "distant_ambient",
+      "post": true,
+      "engine_params": {
+        "stable_audio_model": "stabilityai/stable-audio-open-1.0",
+        "stable_audio_steps": 120,
+        "stable_audio_guidance_scale": 6.5,
+        "stable_audio_sampler": "auto"
+      },
+      "post_params": {
+        "loop_clean": true,
+        "loop_crossfade_ms": 140
+      }
+    },
+    {
+      "name": "ambient_forest",
+      "engine": "stable_audio_open",
+      "prompt": "forest ambience, wind through leaves, distant birds, subtle insects, loopable, no music",
+      "negative_prompt": "music, melody, singing, speech, voiceover, footsteps",
+      "seconds": 12.0,
+      "seed": null,
+      "variation_strength": 0.25,
+      "fx_chain": "distant_ambient",
+      "post": true,
+      "engine_params": {
+        "stable_audio_model": "stabilityai/stable-audio-open-1.0",
+        "stable_audio_steps": 120,
+        "stable_audio_guidance_scale": 6.5,
+        "stable_audio_sampler": "auto"
+      },
+      "post_params": {
+        "loop_clean": true,
+        "loop_crossfade_ms": 160
+      }
+    },
+    {
+      "name": "ui_soft_click",
+      "engine": "rfxgen",
+      "prompt": "soft ui click",
+      "negative_prompt": null,
+      "seconds": 0.25,
+      "seed": null,
+      "variation_strength": 0.20,
+      "fx_chain": "ui_polish",
+      "post": true,
+      "engine_params": {
+        "rfxgen_preset": "blip"
+      }
+    },
+    {
+      "name": "ui_magic_ping",
+      "engine": "rfxgen",
+      "prompt": "magic ui ping, bright sparkle",
+      "negative_prompt": null,
+      "seconds": 0.45,
+      "seed": null,
+      "variation_strength": 0.25,
+      "fx_chain": "ui_polish",
+      "post": true,
+      "engine_params": {
+        "rfxgen_preset": "powerup"
+      }
+    }
+  ]
+}
