@@ -70,6 +70,57 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: preset browser + generate panel + waveform editor + FX chain editor + project browser + export panel
   - **Done gate**: install/run docs
 
+---
+
+# v3 — Sound‑Design Platform (Spec)
+
+- Spec doc: [docs/v3_spec.md](v3_spec.md)
+- Status: **Later (optional)** (ambitious long-horizon)
+
+## v3 Completion Checklist (Spec)
+
+v3 is considered **complete** when every section below is **Done** end-to-end (code + docs + GUI/CLI wiring + export profiles).
+
+- **v3.1 Multi‑track sound design (mini‑DAW)** — **Later (optional)**
+  - **Done gate**: timeline with clips (drag/move/trim/split/crossfade)
+  - **Done gate**: tracks with mute/solo/gain/pan + per-track FX chain
+  - **Done gate**: snap modes (grid/transient/region boundaries)
+  - **Done gate**: per-clip gain/fade/pitch/time-stretch
+
+- **v3.2 AI‑assisted editing** — **Later (optional)**
+  - **Done gate**: auto-clean tools (denoise/de-click/hum removal)
+  - **Done gate**: auto-loop suggestions + auto crossfade
+  - **Done gate**: auto-FX suggestions + auto-layer suggestions
+  - **Done gate**: auto naming + tagging into metadata
+
+- **v3.3 Plugin system (platform)** — **Later (optional)**
+  - **Done gate**: plugin manifest format (`sndbund_plugin.json`) + loader from `plugins/`
+  - **Done gate**: plugin types: engines, FX modules, FX chains, preset packs, exporters, editor tools
+  - **Done gate**: versioning + dependency validation + safe failure modes
+
+- **v3.4 Game engine export (Unity/Unreal/Godot)** — **Later (optional)**
+  - **Done gate**: Unity export profile (WAV + optional metadata templates)
+  - **Done gate**: Unreal export profile (WAV + cue definitions + optional MetaSound templates)
+  - **Done gate**: Godot export profile (WAV + import hints)
+
+- **v3.5 Hybrid engine v3 (AI + procedural + sample)** — **Later (optional)**
+  - **Done gate**: pipeline supports AI base + procedural transients + sample layer + automix
+  - **Done gate**: configurable via presets (layers active/weights/layer FX)
+
+- **v3.6 GUI v2 (full workstation UI)** — **Later (optional)**
+  - **Done gate**: transport + timeline + track list + FX rack + preset browser + engine panel
+  - **Done gate**: project tree + metadata inspector + export panel
+  - **Done gate**: modes (Generate/Edit/Mix/Export) in one window
+
+- **v3.7 Sound pack builder v2** — **Later (optional)**
+  - **Done gate**: pack categories + status/tags/source tracking
+  - **Done gate**: pack export profiles (Minecraft + Unity/Unreal/Godot)
+  - **Done gate**: loudness normalization across pack
+
+- **v3.8 CLI v3 extensions** — **Later (optional)**
+  - **Done gate**: project create/build/export commands
+  - **Done gate**: hybrid engine CLI + pack normalize command
+
 ## Phase 1 — Core foundations (toward 1.0)
 
 - **1.1 Multi‑engine architecture** — **Done**
