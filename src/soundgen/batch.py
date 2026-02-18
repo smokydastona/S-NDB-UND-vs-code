@@ -143,6 +143,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Batch-generate Minecraft sounds from a CSV/JSON manifest.")
     p.add_argument("--manifest", required=True, help="Path to .json/.csv manifest")
 
+    p.add_argument(
+        "--candidates",
+        type=int,
+        default=1,
+        help="Generate N candidates per output and pick the best using QA metrics (default 1). Manifest item can override with 'candidates'.",
+    )
+
     # Concrete SFX presets (optional): engine + prompt + defaults + FX chain.
     p.add_argument(
         "--sfx-preset",
@@ -318,6 +325,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
     engine = str(getattr(item, "engine", None) or "").strip() or None
     prompt = str(getattr(item, "prompt", "") or "").strip()
     seconds = item.seconds
+    candidates = item.candidates
     seed_base = item.seed
 
     if sfx_preset_obj is not None:
@@ -339,6 +347,10 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
         engine = "rfxgen"
     if seconds is None:
         seconds = 3.0
+
+    effective_candidates = int(candidates) if candidates is not None else int(getattr(args, "candidates", 1) or 1)
+    if effective_candidates < 1:
+        effective_candidates = 1
 
     # Apply FX chain (manifest item wins over preset wins over CLI).
     fx_chain_key = str(getattr(item, "fx_chain", None) or getattr(effective_args, "fx_chain", "off") or "off").strip()
@@ -401,6 +413,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
                 seconds=float(seconds),
                 seed=seed_i,
                 out_wav=tmp_wav,
+                candidates=effective_candidates,
                 postprocess_fn=(_pp if item.post else None),
                 device=str(effective_args.device),
                 model=str(effective_args.model),
@@ -481,6 +494,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
             credits: dict = {
                 "engine": engine,
                 "prompt": prompt,
+                "candidates": effective_candidates,
                 "emotion": str(getattr(effective_args, "emotion", "neutral") or "neutral"),
                 "intensity": float(getattr(effective_args, "intensity", 0.0) or 0.0),
                 "variation": float(getattr(effective_args, "variation", 0.0) or 0.0),

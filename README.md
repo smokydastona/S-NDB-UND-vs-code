@@ -736,7 +736,7 @@ Create a JSON manifest (example: `sounds.json`):
 ```json
 [
 	{"engine": "rfxgen", "namespace": "mymod", "event": "ui.coin", "prompt": "coin pickup", "variants": 5, "subtitle": "Coin"},
-	{"engine": "diffusers", "namespace": "mymod", "event": "sfx.magic", "prompt": "short magical sparkle", "seconds": 2.0, "post": true}
+	{"engine": "diffusers", "namespace": "mymod", "event": "sfx.magic", "prompt": "short magical sparkle", "seconds": 2.0, "candidates": 4, "post": true}
 ]
 ```
 
@@ -745,6 +745,8 @@ Run:
 ```powershell
 python -m soundgen.batch --manifest sounds.json --pack-root resourcepack --mc-target resourcepack --zip outputs\resourcepack.zip
 ```
+
+You can also set a default `--candidates` for all manifest items (items can override with `candidates`).
 
 This appends a local catalog to `library/catalog.jsonl`.
 

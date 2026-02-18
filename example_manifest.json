@@ -25,6 +25,7 @@
     "namespace": "mymod",
     "event": "creature.roar",
     "sfx_preset": "creature_medium_roar",
+    "candidates": 3,
     "variants": 6,
     "subtitle": "Roar",
     "fx_chain": "creature_grit",

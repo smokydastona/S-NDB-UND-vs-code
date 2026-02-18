@@ -21,6 +21,7 @@ class ManifestItem:
     sound_path: Optional[str] = None
 
     seconds: Optional[float] = None
+    candidates: Optional[int] = None
     seed: Optional[int] = None
     preset: Optional[str] = None  # rfxgen
 
@@ -107,6 +108,7 @@ def _item_from_mapping(m: dict[str, Any]) -> ManifestItem:
         event=str(m.get("event") or "generated.sound").strip(),
         sound_path=(str(m["sound_path"]).strip() if m.get("sound_path") else None),
         seconds=(_coerce_float(m.get("seconds"), 3.0) if m.get("seconds") not in (None, "") else None),
+        candidates=(max(1, _coerce_int(m.get("candidates"), 1)) if m.get("candidates") not in (None, "") else None),
         seed=(int(m["seed"]) if m.get("seed") not in (None, "") else None),
         preset=(str(m["preset"]).strip() if m.get("preset") else None),
 
