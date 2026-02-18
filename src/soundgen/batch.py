@@ -497,7 +497,7 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
                 ogg_quality=int(effective_args.ogg_quality),
                 sample_rate=int(effective_args.mc_sample_rate),
                 channels=int(effective_args.mc_channels),
-                description="S-NDB-UND pack",
+                description="SÖNDBÖUND pack",
                 write_pack_mcmeta=write_pack_mcmeta,
             )
             out_files.append(ogg_path)

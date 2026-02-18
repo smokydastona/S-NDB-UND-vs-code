@@ -151,7 +151,7 @@ def create_project(
         "schema_version": PROJECT_SCHEMA_VERSION,
         "project_id": str(project_id).strip() or "project",
         "kind": kind_s,
-        "title": str(title).strip() or str(project_id).strip() or "S-NDB-UND Project",
+        "title": str(title).strip() or str(project_id).strip() or "SÖNDBÖUND Project",
         "created_utc": _now_utc_iso(),
         "namespace": sanitize_id(str(namespace).strip() or "soundgen", kind="namespace"),
         "pack_root": str(pack_root).strip() or "resourcepack",
@@ -405,7 +405,7 @@ def import_edit(
         weight=int(item.get("weight", 1) or 1),
         volume=float(item.get("volume", 1.0) or 1.0),
         pitch=float(item.get("pitch", 1.0) or 1.0),
-        description=str(proj.get("title", "S-NDB-UND project")),
+        description=str(proj.get("title", "SÖNDBÖUND project")),
         write_pack_mcmeta=True,
     )
 
@@ -446,7 +446,7 @@ def import_edit(
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=(
-            "S-NDB-UND Project System (v2.4)\n\n"
+            "SÖNDBÖUND Project System (v2.4)\n\n"
             "A project tracks sounds, versions (generated + edited), and supports Minecraft-ready export."
         )
     )

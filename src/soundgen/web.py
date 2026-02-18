@@ -1250,9 +1250,9 @@ def _generate(
 
 
 def build_demo_legacy() -> gr.Blocks:
-    with gr.Blocks(title="S-NDB-UND") as demo:
+    with gr.Blocks(title="SÖNDBÖUND") as demo:
         gr.Markdown(
-            "# S-NDB-UND — Prompt → Sound Effect\n"
+            "# SÖNDBÖUND — Prompt → Sound Effect\n"
             "Start with: Engine + Prompt + Seconds. Expand the accordions only if you need more control.\n"
             "Tip: turn on **Pro preset** or a **Polish profile** for quick wins."
         )

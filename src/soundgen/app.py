@@ -19,7 +19,7 @@ def _hide_console_window_windows() -> None:
         return
 
     # If launched from an interactive terminal, do not hide the console.
-    # This keeps `S-NDB-UND.exe web` / `desktop` debuggable.
+    # This keeps `SÖNDBÖUND.exe web` / `desktop` debuggable.
     try:
         if bool(getattr(sys.stdout, "isatty", lambda: False)()) or bool(getattr(sys.stderr, "isatty", lambda: False)()):
             return
@@ -39,35 +39,35 @@ def _hide_console_window_windows() -> None:
 
 def _print_help() -> None:
     print(
-        "S-NDB-UND (single app)\n\n"
+        "SÖNDBÖUND (single app)\n\n"
         "Usage:\n"
-        "  S-NDB-UND.exe                  (opens the desktop UI)\n"
-        "  S-NDB-UND.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
-        "  S-NDB-UND.exe finetune <args>  (Fine-tuning helpers: train wrapper + validation preview)\n"
-        "  S-NDB-UND.exe web <args>       (Gradio UI in your browser)\n"
-        "  S-NDB-UND.exe desktop <args>   (UI in an embedded desktop window)\n"
-        "  S-NDB-UND.exe project <args>   (Project system: track versions + export packs)\n"
-        "  S-NDB-UND.exe mobset <args>    (Minecraft mob soundset generator)\n"
-        "  S-NDB-UND.exe edit <wav>       (Built-in destructive editor)\n"
-        "  S-NDB-UND.exe regions <args>   (Editor region tools: export regions non-interactively)\n"
-        "  S-NDB-UND.exe loop <args>      (Loop suite: auto loop points, tail trim, noise bed helpers)\n\n"
+        "  SÖNDBÖUND.exe                  (opens the desktop UI)\n"
+        "  SÖNDBÖUND.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
+        "  SÖNDBÖUND.exe finetune <args>  (Fine-tuning helpers: train wrapper + validation preview)\n"
+        "  SÖNDBÖUND.exe web <args>       (Gradio UI in your browser)\n"
+        "  SÖNDBÖUND.exe desktop <args>   (UI in an embedded desktop window)\n"
+        "  SÖNDBÖUND.exe project <args>   (Project system: track versions + export packs)\n"
+        "  SÖNDBÖUND.exe mobset <args>    (Minecraft mob soundset generator)\n"
+        "  SÖNDBÖUND.exe edit <wav>       (Built-in destructive editor)\n"
+        "  SÖNDBÖUND.exe regions <args>   (Editor region tools: export regions non-interactively)\n"
+        "  SÖNDBÖUND.exe loop <args>      (Loop suite: auto loop points, tail trim, noise bed helpers)\n\n"
         "Help:\n"
-        "  S-NDB-UND.exe mobset --help\n"
-        "  S-NDB-UND.exe project --help\n"
-        "  S-NDB-UND.exe generate --help\n"
-        "  S-NDB-UND.exe finetune --help\n"
-        "  S-NDB-UND.exe edit --help\n"
-        "  S-NDB-UND.exe regions --help\n"
-        "  S-NDB-UND.exe loop --help\n"
+        "  SÖNDBÖUND.exe mobset --help\n"
+        "  SÖNDBÖUND.exe project --help\n"
+        "  SÖNDBÖUND.exe generate --help\n"
+        "  SÖNDBÖUND.exe finetune --help\n"
+        "  SÖNDBÖUND.exe edit --help\n"
+        "  SÖNDBÖUND.exe regions --help\n"
+        "  SÖNDBÖUND.exe loop --help\n"
     )
 
 
 def _startup_log_path() -> Path:
     if sys.platform == "win32":
         la = str(os.environ.get("LOCALAPPDATA") or "").strip()
-        base = (Path(la) if la else (Path.home() / "AppData" / "Local")) / "S-NDB-UND"
+        base = (Path(la) if la else (Path.home() / "AppData" / "Local")) / "SÖNDBÖUND"
     else:
-        base = Path.home() / ".sndbund"
+        base = Path.home() / ".söndböund"
     return base / "startup.log"
 
 
@@ -105,9 +105,9 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
         msg = str(e).strip() or repr(e)
         _write_startup_log(f"SystemExit in {mode_name}: {msg}\n{traceback.format_exc()}")
         _show_error_dialog(
-            "S-NDB-UND failed to start",
+            "SÖNDBÖUND failed to start",
             f"{mode_name} failed to start.\n\n{msg}\n\n"
-            f"Tip: you can run `S-NDB-UND.exe web` to open in your browser.\n"
+            f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
             f"Log: {_startup_log_path()}",
         )
         raise
@@ -115,9 +115,9 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
         msg = str(e).strip() or e.__class__.__name__
         _write_startup_log(f"Exception in {mode_name}: {msg}\n{traceback.format_exc()}")
         _show_error_dialog(
-            "S-NDB-UND failed to start",
+            "SÖNDBÖUND failed to start",
             f"{mode_name} crashed on startup.\n\n{msg}\n\n"
-            f"Tip: you can run `S-NDB-UND.exe web` to open in your browser.\n"
+            f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
             f"Log: {_startup_log_path()}",
         )
         return 1
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "edit":
         if not rest or rest[0] in {"-h", "--help", "help"}:
-            print("Usage: S-NDB-UND.exe edit <path-to-wav>")
+            print("Usage: SÖNDBÖUND.exe edit <path-to-wav>")
             return 0
         from .editor import launch_editor
 

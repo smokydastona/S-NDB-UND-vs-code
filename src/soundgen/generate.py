@@ -1016,7 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
             ogg_quality=args.ogg_quality,
             sample_rate=args.mc_sample_rate,
             channels=args.mc_channels,
-            description="S-NDB-UND pack",
+            description="SÖNDBÖUND pack",
             write_pack_mcmeta=write_pack_mcmeta,
         )
         print(f"Minecraft export: {ogg_path}")

@@ -26,7 +26,7 @@ python -m pip install -e . | Out-Null
 
 # Build the executable (folder-based /onedir for reliability)
 # Note: AI engines (torch/diffusers/transformers) make these builds large.
-$baseAppName = "S-NDB-UND"
+$baseAppName = "SÖNDBÖUND"
 $appName = $baseAppName
 if ($Version -and $Version.Trim().Length -gt 0) {
   $ver = $Version.Trim()

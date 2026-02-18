@@ -1,13 +1,13 @@
-# S-NDB-UND — game-audio sound generator (Prompt → SFX WAV)
+# SÖNDBÖUND — game-audio sound generator (Prompt → SFX WAV)
 
 [![Build EXE](https://github.com/smokydastona/S-NDB-UND/actions/workflows/build-exe.yml/badge.svg)](https://github.com/smokydastona/S-NDB-UND/actions/workflows/build-exe.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-S-NDB-UND is an **open-source game-audio sound generator** for game developers, modders, and sound designers.
+SÖNDBÖUND is an **open-source game-audio sound generator** for game developers, modders, and sound designers.
 It combines **AI prompt-to-audio**, **procedural / DSP engines**, and **post-processing + FX chains** to produce **game-ready SFX, ambience, and creature sounds** — with a CLI-first workflow and Minecraft-ready export.
 
-App name: **S-NDB-UND** (Python module name: `soundgen`).
+App name: **SÖNDBÖUND** (Python module name: `soundgen`).
 
 ## At a glance
 
@@ -36,7 +36,7 @@ App name: **S-NDB-UND** (Python module name: `soundgen`).
 - Sound designers prototyping ideas quickly (and iterating deterministically).
 - Tool/dev contributors who want an extensible engine + export pipeline.
 
-## Why S-NDB-UND?
+## Why SÖNDBÖUND?
 
 - **Designed for game audio**, not “make a song.”
 - **Built-in post / polish** so results land closer to “drop-in usable.”
@@ -204,8 +204,8 @@ python -m soundgen.doctor --check-stable-audio
 - **rfxgen engine fails**: download `rfxgen.exe` with [scripts/get_rfxgen.ps1](scripts/get_rfxgen.ps1) or pass `--rfxgen-path tools/rfxgen/rfxgen.exe`.
 - **CUDA issues / torch mismatch**: start with `--device cpu`. If you want GPU, install a torch build that matches your CUDA drivers.
 - **Python install problems**: if dependency installs fail on very new Python versions, try Python 3.12 (the GitHub Actions EXE build uses 3.12).
-- **Windows EXE opens nothing** (Desktop UI): this usually means `pywebview` or the Microsoft Edge **WebView2 Runtime** is missing. Try `S-NDB-UND.exe web` to open in your browser, or check the startup log at `%LOCALAPPDATA%\S-NDB-UND\startup.log`.
-- **Windows SmartScreen blocks the EXE**: click **More info** → **Run anyway**. If you downloaded a ZIP, right-click it → **Properties** → **Unblock** (then re-extract), or run `Unblock-File .\S-NDB-UND-*-windows.zip` in PowerShell before extracting.
+- **Windows EXE opens nothing** (Desktop UI): this usually means `pywebview` or the Microsoft Edge **WebView2 Runtime** is missing. Try `SÖNDBÖUND.exe web` to open in your browser, or check the startup log at `%LOCALAPPDATA%\SÖNDBÖUND\startup.log`.
+- **Windows SmartScreen blocks the EXE**: click **More info** → **Run anyway**. If you downloaded a ZIP, right-click it → **Properties** → **Unblock** (then re-extract), or run `Unblock-File .\SÖNDBÖUND-*-windows.zip` in PowerShell before extracting.
 
 ## Windows .exe builds (optional)
 
@@ -213,17 +213,17 @@ This repo can build Windows executables via GitHub Actions.
 
 - The workflow is in `.github/workflows/build-exe.yml`.
 - Builds produce one zipped folder (versioned per workflow run):
-	- `S-NDB-UND-<run>-windows.zip` (single app: CLI + Desktop UI)
+	- `SÖNDBÖUND-<run>-windows.zip` (single app: CLI + Desktop UI)
 
 Usage:
 
-- Double-click `S-NDB-UND.exe` to open the desktop UI window.
+- Double-click `SÖNDBÖUND.exe` to open the desktop UI window.
 - Run in a terminal for CLI generation:
-	- `S-NDB-UND.exe generate --engine rfxgen --prompt "coin pickup" --post --out outputs\\test.wav`
+	- `SÖNDBÖUND.exe generate --engine rfxgen --prompt "coin pickup" --post --out outputs\\test.wav`
 
 How to get them:
 
-- **GitHub Actions**: builds run on every push. Download the `S-NDB-UND-windows-exes-<run>` artifact.
+- **GitHub Actions**: builds run on every push. Download the `SÖNDBÖUND-windows-exes-<run>` artifact.
 - **GitHub Releases**: if you publish a release, the workflow attaches the same ZIPs to the release.
 
 Notes:
@@ -259,7 +259,7 @@ MIT licensed — see [LICENSE](LICENSE).
 
 ## One-stop shop (v1) vision
 
-S-NDB-UND’s v1 target is a single integrated workflow:
+SÖNDBÖUND’s v1 target is a single integrated workflow:
 
 - Generate (AI + procedural)
 - Polish (FX chains + post)
@@ -277,7 +277,7 @@ Design/spec docs:
 Open any WAV from disk:
 
 ```powershell
-S-NDB-UND.exe edit outputs\coin.wav
+SÖNDBÖUND.exe edit outputs\coin.wav
 ```
 
 Or generate then open automatically:
@@ -361,7 +361,7 @@ python -m soundgen.loop_suite mix-bed --in outputs\amb_trim.wav --bed outputs\am
 Windows EXE usage:
 
 ```powershell
-S-NDB-UND.exe loop auto --in outputs\amb.wav --out outputs\amb_loop.wav
+SÖNDBÖUND.exe loop auto --in outputs\amb.wav --out outputs\amb_loop.wav
 ```
 
 ## Generate from the CLI
@@ -421,7 +421,7 @@ python -m soundgen.generate --engine stable_audio_open --candidates 4 --stable-a
 
 ### Creature families (LoRA fine-tuning workflow)
 
-S-NDB-UND supports loading **LoRA adapters at inference time** for `stable_audio_open`.
+SÖNDBÖUND supports loading **LoRA adapters at inference time** for `stable_audio_open`.
 
 - Put your family definitions in `configs/creature_families.json` (project config), or `library/creature_families.json` (local override).
 - Start from `configs/creature_families.example.json`.
@@ -448,7 +448,7 @@ Generate a full set of mob sounds (hurt/death/ambient/step) directly into a pack
 
 ```powershell
 # EXE (from the Windows artifact)
-S-NDB-UND.exe mobset --mob zombie --namespace mymod --pack-root resourcepack --engine stable_audio_open --variants 4 --subtitle-base "Zombie" --show-snippet -- --post --polish
+SÖNDBÖUND.exe mobset --mob zombie --namespace mymod --pack-root resourcepack --engine stable_audio_open --variants 4 --subtitle-base "Zombie" --show-snippet -- --post --polish
 
 # Python
 python -m soundgen.app mobset --mob zombie --namespace mymod --pack-root resourcepack --engine layered --variants 4 --show-snippet -- --post --polish

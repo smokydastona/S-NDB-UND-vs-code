@@ -41,18 +41,18 @@ jobs:
         shell: pwsh
         run: |
           $ver = $env:GITHUB_RUN_NUMBER
-          Compress-Archive -Path "dist/S-NDB-UND-$ver" -DestinationPath "dist/S-NDB-UND-$ver-windows.zip" -Force
+          Compress-Archive -Path "dist/SÖNDBÖUND-$ver" -DestinationPath "dist/SÖNDBÖUND-$ver-windows.zip" -Force
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: S-NDB-UND-windows-exes-${{ github.run_number }}
+          name: SÖNDBÖUND-windows-exes-${{ github.run_number }}
           path: |
-            dist/S-NDB-UND-${{ github.run_number }}-windows.zip
+            dist/SÖNDBÖUND-${{ github.run_number }}-windows.zip
 
       - name: Upload release assets
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/S-NDB-UND-${{ github.run_number }}-windows.zip
+            dist/SÖNDBÖUND-${{ github.run_number }}-windows.zip

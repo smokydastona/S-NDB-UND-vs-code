@@ -12,7 +12,7 @@ from .io_utils import convert_audio_with_ffmpeg
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=(
-            "Prepare a creature-family fine-tuning dataset from existing S-NDB-UND outputs.\n\n"
+            "Prepare a creature-family fine-tuning dataset from existing SÖNDBÖUND outputs.\n\n"
             "This tool is intentionally training-framework-agnostic: it exports a simple audio folder + metadata.jsonl "
             "that can be consumed by diffusers/accelerate scripts or other LoRA trainers."
         )

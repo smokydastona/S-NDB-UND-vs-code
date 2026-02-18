@@ -204,7 +204,7 @@ v4 is considered **complete** when every section below is **Done** end-to-end (c
 
 - **3.4 Looping + ambience tools** — **Done**
   - Loop-clean + crossfade exists.
-  - Loop suite commands implemented: `python -m soundgen.loop_suite` (auto loop points, tail trim heuristics, noise bed helpers) and `S-NDB-UND.exe loop ...`.
+  - Loop suite commands implemented: `python -m soundgen.loop_suite` (auto loop points, tail trim heuristics, noise bed helpers) and `SÖNDBÖUND.exe loop ...`.
 
 - **3.5 Editor-grade DSP + analysis (Audacity/Ardour inspired)** — **Done**
   - Export analysis report (stored in credits / best-of-N selection).
@@ -230,7 +230,7 @@ v4 is considered **complete** when every section below is **Done** end-to-end (c
     - **Markers**: mark transients, loop points, “good takes”.
     - **Playback**: play from cursor, play selection, loop selection.
     - **Export**: overwrite, “save as new variation” (auto suffix: `_edit1`, `_trim`, `_loopfix`, …).
-  - Implemented in `soundgen.editor.launch` (matplotlib waveform UI + Windows playback), wired via `python -m soundgen.generate --edit` and `S-NDB-UND.exe edit <wav>`.
+  - Implemented in `soundgen.editor.launch` (matplotlib waveform UI + Windows playback), wired via `python -m soundgen.generate --edit` and `SÖNDBÖUND.exe edit <wav>`.
 
   **Editor repo takeaways (applied, scope-safe)**
   - **Mode split (Zoom vs Selection)**: copy the explicit mode toggle idea (zoom-only interactions vs selection/edit interactions) to reduce accidental edits and simplify gestures (from Web-Audio-Editor).

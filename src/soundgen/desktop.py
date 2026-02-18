@@ -13,7 +13,7 @@ def _pick_free_port(host: str) -> int:
 
 
 def run_desktop(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Run the S-NDB-UND UI in a native desktop window (embedded webview).")
+    p = argparse.ArgumentParser(description="Run the SÖNDBÖUND UI in a native desktop window (embedded webview).")
     p.add_argument("--host", default="127.0.0.1", help="Bind host for the local Gradio server.")
     p.add_argument(
         "--port",
@@ -66,7 +66,7 @@ def run_desktop(argv: list[str] | None = None) -> int:
     if not local_url:
         local_url = f"http://{host}:{port}"
 
-    webview.create_window("S-NDB-UND", local_url, width=1200, height=800)
+    webview.create_window("SÖNDBÖUND", local_url, width=1200, height=800)
     webview.start()
     return 0
 

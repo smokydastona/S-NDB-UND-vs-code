@@ -8,7 +8,7 @@ This folder contains the built-in destructive waveform editor used for quick SFX
 Launch:
 
 - `python -c "from soundgen.editor import launch_editor; launch_editor('outputs/out.wav')"`
-- `S-NDB-UND.exe edit outputs\out.wav`
+- `SÖNDBÖUND.exe edit outputs\out.wav`
 
 Notes:
 - Audio stays mono `float32` in `[-1, 1]`.

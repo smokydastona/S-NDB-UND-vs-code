@@ -8,12 +8,15 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 
 
 from ..io_utils import read_wav_mono, write_wav
+
+if TYPE_CHECKING:
+    from ..postprocess import PostProcessParams
 
 
 def _clip_mono(x: np.ndarray) -> np.ndarray:
@@ -530,7 +533,7 @@ def launch_editor(wav_path: str | Path) -> None:
         figsize=(11, 6),
         gridspec_kw={"height_ratios": [2.1, 1.2]},
     )
-    fig.canvas.manager.set_window_title(f"S-NDB-UND Editor — {wav_path.name}")
+    fig.canvas.manager.set_window_title(f"SÖNDBÖUND Editor — {wav_path.name}")
     fig.tight_layout()
 
     def _clear_artist(artist: Any) -> None:
@@ -1094,7 +1097,7 @@ def launch_editor(wav_path: str | Path) -> None:
                 out.append(ch)
         return "".join(out) or "region"
 
-    def _post_params_from_patch(patch: dict[str, Any]) -> "PostProcessParams":
+    def _post_params_from_patch(patch: dict[str, Any]) -> PostProcessParams:
         from ..postprocess import PostProcessParams
 
         # Neutral baseline; the chain's post_stack decides what actually runs.

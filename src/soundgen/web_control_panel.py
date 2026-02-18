@@ -778,9 +778,9 @@ def build_demo_control_panel() -> gr.Blocks:
     .gradio-container * { color-scheme: dark; }
     """
 
-    with gr.Blocks(title="S-NDB-UND", css=css) as demo:
+    with gr.Blocks(title="SÖNDBÖUND", css=css) as demo:
         gr.Markdown(
-            "# S-NDB-UND — Control Panel UI (Gradio-native)\n"
+            "# SÖNDBÖUND — Control Panel UI (Gradio-native)\n"
             "Discrete actions, explicit state, zero continuous interaction."
         )
 
