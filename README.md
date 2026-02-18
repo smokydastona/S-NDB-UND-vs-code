@@ -204,6 +204,7 @@ python -m soundgen.doctor --check-stable-audio
 - **rfxgen engine fails**: download `rfxgen.exe` with [scripts/get_rfxgen.ps1](scripts/get_rfxgen.ps1) or pass `--rfxgen-path tools/rfxgen/rfxgen.exe`.
 - **CUDA issues / torch mismatch**: start with `--device cpu`. If you want GPU, install a torch build that matches your CUDA drivers.
 - **Python install problems**: if dependency installs fail on very new Python versions, try Python 3.12 (the GitHub Actions EXE build uses 3.12).
+- **Windows EXE opens nothing** (Desktop UI): this usually means `pywebview` or the Microsoft Edge **WebView2 Runtime** is missing. Try `S-NDB-UND.exe web` to open in your browser, or check the startup log at `%LOCALAPPDATA%\S-NDB-UND\startup.log`.
 
 ## Windows .exe builds (optional)
 

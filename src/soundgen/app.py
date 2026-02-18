@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import datetime as _dt
+import traceback
+from pathlib import Path
 import sys
 
 
@@ -50,14 +53,73 @@ def _print_help() -> None:
     )
 
 
+def _startup_log_path() -> Path:
+    if sys.platform == "win32":
+        base = Path.home() / "AppData" / "Local" / "S-NDB-UND"
+    else:
+        base = Path.home() / ".sndbund"
+    return base / "startup.log"
+
+
+def _write_startup_log(text: str) -> None:
+    try:
+        p = _startup_log_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.datetime.now().isoformat(timespec="seconds")
+        with p.open("a", encoding="utf-8") as f:
+            f.write(f"[{stamp}] {text}\n")
+    except Exception:
+        return
+
+
+def _show_error_dialog(title: str, message: str) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, str(message), str(title), 0x10)  # MB_ICONERROR
+    except Exception:
+        return
+
+
+def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
+    """Run a GUI-ish mode safely (console may be hidden on Windows)."""
+
+    _hide_console_window_windows()
+    _write_startup_log(f"mode={mode_name} argv={argv!r}")
+    try:
+        return int(fn())
+    except SystemExit as e:
+        # Preserve exit codes, but capture the message for users.
+        msg = str(e).strip() or repr(e)
+        _write_startup_log(f"SystemExit in {mode_name}: {msg}\n{traceback.format_exc()}")
+        _show_error_dialog(
+            "S-NDB-UND failed to start",
+            f"{mode_name} failed to start.\n\n{msg}\n\n"
+            f"Tip: you can run `S-NDB-UND.exe web` to open in your browser.\n"
+            f"Log: {_startup_log_path()}",
+        )
+        raise
+    except Exception as e:
+        msg = str(e).strip() or e.__class__.__name__
+        _write_startup_log(f"Exception in {mode_name}: {msg}\n{traceback.format_exc()}")
+        _show_error_dialog(
+            "S-NDB-UND failed to start",
+            f"{mode_name} crashed on startup.\n\n{msg}\n\n"
+            f"Tip: you can run `S-NDB-UND.exe web` to open in your browser.\n"
+            f"Log: {_startup_log_path()}",
+        )
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     # Default: desktop UI.
     if not argv:
-        _hide_console_window_windows()
         from .desktop import run_desktop
 
-        return int(run_desktop([]))
+        return _run_gui_mode(lambda: run_desktop([]), mode_name="Desktop UI", argv=[])
 
     cmd = str(argv[0]).strip().lower()
     rest = [str(x) for x in argv[1:]]
@@ -78,17 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "web":
-        _hide_console_window_windows()
         from .web import main as web_main
 
-        web_main()
-        return 0
+        return _run_gui_mode(lambda: (web_main() or 0), mode_name="Web UI", argv=rest)
 
     if cmd == "desktop":
-        _hide_console_window_windows()
         from .desktop import run_desktop
 
-        return int(run_desktop(rest))
+        return _run_gui_mode(lambda: run_desktop(rest), mode_name="Desktop UI", argv=rest)
 
     if cmd == "mobset":
         from .mob_soundset import run_mob_soundset
