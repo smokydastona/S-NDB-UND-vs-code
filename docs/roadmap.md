@@ -46,7 +46,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: schema documented + example preset(s) included
   - **Done gate**: wired through CLI + batch + docs-driven generation
 
-- **v2.3 FX Chains v2 (Modular + Visual)** — **Next**
+- **v2.3 FX Chains v2 (Modular + Visual)** — **Done**
   - **Done gate**: new FX modules implemented (pitch shift, time stretch, distortion, convolution reverb IR, multi-band EQ, transient shaper, spectral noise reduction)
   - **Done gate**: FX chain editor supports reorder + parameter editing + audition + save
   - **Done gate**: chain format stable + documented

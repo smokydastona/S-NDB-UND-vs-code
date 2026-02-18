@@ -17,6 +17,7 @@ from .controls import map_prompt_to_controls
 from .pro_presets import apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
 from .fx_chains import apply_fx_chain, fx_chain_keys
+from .fx_chain_v2 import FxChainV2FormatError, apply_fx_chain_v2, load_fx_chain_v2_json
 from .sfx_presets import apply_sfx_preset, render_sfx_prompt_from_args
 
 
@@ -725,7 +726,24 @@ def main(argv: list[str] | None = None) -> int:
 
     # Apply FX chain first so later presets only fill remaining defaults,
     # and explicit user flags are never clobbered.
-    apply_fx_chain(chain_key=str(getattr(args, "fx_chain", "off")), chain_json=getattr(args, "fx_chain_json", None), args=args, parser=parser)
+    fx_chain_v2 = None
+    fx_chain_json_path = getattr(args, "fx_chain_json", None)
+    if fx_chain_json_path:
+        try:
+            fx_chain_v2 = load_fx_chain_v2_json(str(fx_chain_json_path))
+        except FxChainV2FormatError:
+            fx_chain_v2 = None
+        except Exception:
+            fx_chain_v2 = None
+
+    # v1 FX chains are argparse-default patches. If the user passed a v2 JSON, don't feed it into
+    # the v1 loader (it would silently do the wrong thing).
+    apply_fx_chain(
+        chain_key=str(getattr(args, "fx_chain", "off")),
+        chain_json=(None if fx_chain_v2 is not None else fx_chain_json_path),
+        args=args,
+        parser=parser,
+    )
 
     # Apply pro preset after parsing so we can compare against argparse defaults.
     apply_pro_preset(preset_key=str(args.pro_preset), args=args, parser=parser)
@@ -914,11 +932,20 @@ def main(argv: list[str] | None = None) -> int:
         return f"qa: peak={m.peak:.3f} rms={m.rms:.3f}{flag_s}".strip()
 
     def _postprocess_fn_for_engine(engine: str, *, post_seed: int | None, prompt_hint: str | None):
-        if args.post or args.polish:
+        if args.post or args.polish or fx_chain_v2 is not None:
             def _pp_apply(audio: np.ndarray, sr: int) -> tuple[np.ndarray, str]:
-                processed, rep = post_process_audio(audio, sr, _pp_params(post_seed=post_seed, prompt_hint=prompt_hint))
+                processed = audio
+                info_prefix = ""
+                if args.post or args.polish:
+                    processed, rep = post_process_audio(processed, sr, _pp_params(post_seed=post_seed, prompt_hint=prompt_hint))
+                    info_prefix = f"post: trimmed={rep.trimmed} "
+
+                if fx_chain_v2 is not None:
+                    processed = apply_fx_chain_v2(processed, int(sr), fx_chain_v2)
+                    info_prefix = (info_prefix + "fx2: ").strip() + " "
+
                 info = _qa_info(processed, sr)
-                return processed, f"post: trimmed={rep.trimmed} {info}".strip()
+                return processed, f"{info_prefix}{info}".strip()
 
             return _pp_apply
 

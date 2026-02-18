@@ -1207,6 +1207,18 @@ def launch_editor(wav_path: str | Path) -> None:
             p2, _, _ = load_fx_chain_json(str(chain_json))
             patch.update(dict(p2))
 
+        # If this looks like a v2 modular chain, apply it directly.
+        if chain_json and not patch:
+            try:
+                from ..fx_chain_v2 import FxChainV2FormatError, apply_fx_chain_v2, load_fx_chain_v2_json
+
+                chain2 = load_fx_chain_v2_json(str(chain_json))
+                return apply_fx_chain_v2(x.astype(np.float32, copy=False), int(sr), chain2).astype(np.float32, copy=False)
+            except FxChainV2FormatError:
+                pass
+            except Exception:
+                pass
+
         if not patch:
             return x.astype(np.float32, copy=False)
 

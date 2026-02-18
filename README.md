@@ -382,6 +382,25 @@ python -m soundgen.generate --engine layered --prompt "monster roar" --fx-chain 
 python -m soundgen.generate --engine synth --prompt "cave wind ambience" --fx-chain distant_ambient --seconds 8 --out outputs\amb.wav
 ```
 
+### FX chains (v2, modular JSON)
+
+FX Chains v2 are **offline modular effect stacks** stored as JSON (separate from the v1 argparse "defaults patch" chains).
+
+- Spec: [docs/fx_chains_v2.md](docs/fx_chains_v2.md)
+- Example chain: `configs/fx_chain_v2.example.json`
+
+Apply a v2 chain during generation (it runs in the post stage):
+
+```powershell
+python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --fx-chain-json configs\fx_chain_v2.example.json --out outputs\coin_fx2.wav
+```
+
+Interactive chain editor:
+
+```powershell
+python -m soundgen.fx_chain_editor --chain configs\fx_chain_v2.example.json --wav outputs\coin_fx2.wav
+```
+
 You can also load a chain from JSON:
 
 ```powershell

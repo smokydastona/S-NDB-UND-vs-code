@@ -1,0 +1,47 @@
+{
+  "format": "sndbund_fx_chain",
+  "version": 2,
+  "name": "example_v2_chain",
+  "description": "Example v2 modular FX chain (offline).",
+  "steps": [
+    {
+      "id": "spectral_denoise",
+      "params": {
+        "strength": 0.15
+      }
+    },
+    {
+      "id": "transient_shaper",
+      "params": {
+        "attack": 0.25,
+        "sustain": -0.05,
+        "split_hz": 1200.0
+      }
+    },
+    {
+      "id": "multiband_eq",
+      "params": {
+        "low_hz": 250.0,
+        "high_hz": 3000.0,
+        "low_gain_db": 1.0,
+        "mid_gain_db": 0.0,
+        "high_gain_db": 0.5
+      }
+    },
+    {
+      "id": "distortion",
+      "params": {
+        "drive": 0.20,
+        "mode": "tanh",
+        "mix": 0.60
+      }
+    },
+    {
+      "id": "pitch_shift",
+      "params": {
+        "semitones": -1.0,
+        "n_fft": 2048
+      }
+    }
+  ]
+}
