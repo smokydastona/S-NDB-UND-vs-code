@@ -171,6 +171,17 @@ def _generate(
     layered_tail_lp_hz: float,
     layered_tail_drive: float,
     layered_tail_gain_db: float,
+
+    # 3.5 advanced post + xfade controls (kept at the end of the signature)
+    loop_crossfade_curve: str,
+    duck_bed: bool,
+    duck_bed_split_hz: float,
+    duck_bed_amount: float,
+    duck_bed_attack_ms: float,
+    duck_bed_release_ms: float,
+    post_stack: str,
+    compressor_follower_mode: str,
+    layered_xfade_curve: str,
 ) -> tuple[str, str, str, object, object]:
     def _maybe(s: str) -> str | None:
         t = str(s or "").strip()
@@ -514,6 +525,16 @@ def _generate(
             prompt_hint=str(prompt),
             loop_clean=bool(loop_clean),
             loop_crossfade_ms=int(loop_crossfade_ms) if loop_crossfade_ms is not None else 100,
+            loop_crossfade_curve=str(loop_crossfade_curve or "linear"),
+
+            duck_bed=bool(duck_bed),
+            duck_bed_split_hz=float(duck_bed_split_hz),
+            duck_bed_amount=float(duck_bed_amount),
+            duck_bed_attack_ms=float(duck_bed_attack_ms),
+            duck_bed_release_ms=float(duck_bed_release_ms),
+
+            post_stack=(str(post_stack).strip() if str(post_stack or "").strip() else None),
+            compressor_follower_mode=str(compressor_follower_mode or "peak"),
             exciter_amount=float(exc),
         )
         if hints is not None:
@@ -748,6 +769,7 @@ def _generate(
                 layered_tail_tilt=float(layered_tail_tilt),
                 layered_xfade_transient_to_body_ms=float(layered_xfade_transient_to_body_ms),
                 layered_xfade_body_to_tail_ms=float(layered_xfade_body_to_tail_ms),
+                layered_xfade_curve_shape=str(layered_xfade_curve or "linear"),
                 layered_transient_hp_hz=float(layered_transient_hp_hz),
                 layered_transient_lp_hz=float(layered_transient_lp_hz),
                 layered_transient_drive=float(layered_transient_drive),
@@ -823,6 +845,15 @@ def _generate(
         credits["polish_profile"] = str(polish_profile or "off")
         credits["loop_clean"] = bool(loop_clean)
         credits["loop_crossfade_ms"] = int(loop_crossfade_ms) if loop_crossfade_ms is not None else 100
+        credits["loop_crossfade_curve"] = str(loop_crossfade_curve or "linear")
+        credits["duck_bed"] = bool(duck_bed)
+        credits["duck_bed_split_hz"] = float(duck_bed_split_hz)
+        credits["duck_bed_amount"] = float(duck_bed_amount)
+        credits["duck_bed_attack_ms"] = float(duck_bed_attack_ms)
+        credits["duck_bed_release_ms"] = float(duck_bed_release_ms)
+        credits["post_stack"] = (str(post_stack).strip() if str(post_stack or "").strip() else None)
+        credits["compressor_follower_mode"] = str(compressor_follower_mode or "peak")
+        credits["layered_xfade_curve_shape"] = str(layered_xfade_curve or "linear")
         if generated.sources:
             credits["sources"] = list(generated.sources)
 
@@ -1016,6 +1047,12 @@ def build_demo() -> gr.Blocks:
                             label="xfade body→tail (ms)",
                         )
 
+                    layered_xfade_curve = gr.Dropdown(
+                        ["linear", "equal_power", "exponential"],
+                        value="linear",
+                        label="layered xfade curve",
+                    )
+
                     gr.Markdown("Per-layer FX (0 disables HP/LP/drive; gain is dB).")
                     with gr.Row():
                         layered_transient_hp_hz = gr.Slider(0.0, 2000.0, value=0.0, step=10.0, label="transient HPF (Hz)")
@@ -1191,8 +1228,43 @@ def build_demo() -> gr.Blocks:
             polish = gr.Checkbox(value=False, label="Polish mode (denoise/transients/compress/limit)")
             loop_clean = gr.Checkbox(value=False, label="Loop-clean ambience (100ms seam crossfade)")
             loop_crossfade_ms = gr.Slider(10, 400, value=100, step=10, label="Loop crossfade (ms)")
+            loop_crossfade_curve = gr.Dropdown(
+                ["linear", "equal_power", "exponential"],
+                value="linear",
+                label="Loop crossfade curve",
+            )
 
-        def _preset_info_md(k: str) -> gr.Update:
+        with gr.Accordion("Advanced post (3.5)", open=False):
+            compressor_follower_mode = gr.Dropdown(
+                ["peak", "rms"],
+                value="peak",
+                label="compressor follower mode",
+            )
+            post_stack = gr.Textbox(
+                value="",
+                label="post stack override (optional)",
+                placeholder="Example: trim,denoise,filters,multiband,formant,texture,transient,exciter,duck_bed,fade,compressor,reverb,loop_clean,normalize,limiter,final_clip",
+            )
+            duck_bed = gr.Checkbox(value=False, label="Duck bed under transients (offline sidechain-style)")
+            with gr.Row():
+                duck_bed_split_hz = gr.Slider(200.0, 12000.0, value=1800.0, step=50.0, label="duck split (Hz)", visible=False)
+                duck_bed_amount = gr.Slider(0.0, 1.0, value=0.35, step=0.05, label="duck amount", visible=False)
+            with gr.Row():
+                duck_bed_attack_ms = gr.Slider(0.5, 30.0, value=2.0, step=0.5, label="duck attack (ms)", visible=False)
+                duck_bed_release_ms = gr.Slider(5.0, 600.0, value=120.0, step=5.0, label="duck release (ms)", visible=False)
+
+            duck_bed.change(
+                fn=lambda v: (
+                    gr.update(visible=bool(v)),
+                    gr.update(visible=bool(v)),
+                    gr.update(visible=bool(v)),
+                    gr.update(visible=bool(v)),
+                ),
+                inputs=[duck_bed],
+                outputs=[duck_bed_split_hz, duck_bed_amount, duck_bed_attack_ms, duck_bed_release_ms],
+            )
+
+        def _preset_info_md(k: str) -> dict:
             key = str(k or "off").strip()
             if not key or key.lower() == "off":
                 return gr.update(value="", visible=False)
@@ -1203,7 +1275,7 @@ def build_demo() -> gr.Blocks:
             rec_line = f"\n\nRecommended polish profile: `{rec}`" if rec else ""
             return gr.update(value=f"**{obj.title}** — {obj.description}{rec_line}", visible=True)
 
-        def _profile_info_md(k: str) -> gr.Update:
+        def _profile_info_md(k: str) -> dict:
             key = str(k or "off").strip()
             if not key or key.lower() == "off":
                 return gr.update(value="", visible=False)
@@ -1399,6 +1471,16 @@ def build_demo() -> gr.Blocks:
                 layered_tail_lp_hz,
                 layered_tail_drive,
                 layered_tail_gain_db,
+
+                loop_crossfade_curve,
+                duck_bed,
+                duck_bed_split_hz,
+                duck_bed_amount,
+                duck_bed_attack_ms,
+                duck_bed_release_ms,
+                post_stack,
+                compressor_follower_mode,
+                layered_xfade_curve,
             ],
             outputs=[out_file, playsound_cmd, info, wave, spec],
         )
