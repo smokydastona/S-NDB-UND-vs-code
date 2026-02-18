@@ -40,7 +40,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: loop point metadata export (for region exports + main export)
   - **In repo (basic)**: spectrogram/transients/regions/loop metadata shipped (see above)
 
-- **v2.2 Presets v2 (Smart Presets)** — **Next**
+- **v2.2 Presets v2 (Smart Presets)** — **Done**
   - **Done gate**: parameter variables + randomized prompt fragments + families
   - **Done gate**: preset inheritance (base → variants)
   - **Done gate**: schema documented + example preset(s) included

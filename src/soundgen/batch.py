@@ -16,7 +16,7 @@ from .credits import upsert_pack_credits
 from .pro_presets import PRO_PRESETS, apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
 from .fx_chains import apply_fx_chain, fx_chain_keys
-from .sfx_presets import apply_sfx_preset
+from .sfx_presets import apply_sfx_preset, render_prompt_template
 
 
 def _default_sound_path(namespace: str, event: str) -> str:
@@ -387,6 +387,18 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
 
             pitch_contour = str(getattr(effective_args, "pitch_contour", "flat") or "flat")
             effective_prompt = prompt
+
+            # Smart preset v2: render prompt template vars using the per-variant seed.
+            if sfx_preset_obj is not None and getattr(sfx_preset_obj, "vars", None):
+                try:
+                    effective_prompt, chosen = render_prompt_template(
+                        str(effective_prompt),
+                        vars_def=dict(getattr(sfx_preset_obj, "vars") or {}),
+                        seed=seed_i,
+                    )
+                    setattr(effective_args, "sfx_preset_vars_chosen", chosen)
+                except Exception:
+                    pass
 
             # Optional pro preset prompt augmentation (only for AI/sample selection engines).
             preset_key = str(getattr(effective_args, "pro_preset", "off") or "off").strip()

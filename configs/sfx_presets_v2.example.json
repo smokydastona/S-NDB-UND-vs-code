@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "families": {
+    "creature.roar": {
+      "engine": "stable_audio_open",
+      "prompt": "{size} creature roar, {texture}, {emotion}, game SFX, clean, no music",
+      "vars": {
+        "size": ["small", "medium", "large"],
+        "texture": ["raspy", "guttural", "wet", "dry"],
+        "emotion": ["angry", "scared", "neutral"]
+      },
+      "seconds": 2.6,
+      "post": true,
+      "engine_params": {
+        "stable_audio_steps": 100,
+        "stable_audio_guidance_scale": 7.0
+      },
+      "post_params": {
+        "normalize_peak_db": -1.0
+      }
+    }
+  },
+  "presets": [
+    {
+      "name": "creature.roar_base",
+      "family": "creature.roar"
+    },
+    {
+      "name": "creature.small_roar",
+      "inherits": "creature.roar_base",
+      "vars": {
+        "size": "small"
+      },
+      "seconds": 1.7
+    },
+    {
+      "name": "creature.large_roar",
+      "inherits": "creature.roar_base",
+      "vars": {
+        "size": "large",
+        "texture": ["guttural", "deep", "rumbling"],
+        "emotion": ["angry", "dominant"]
+      },
+      "seconds": 3.4
+    }
+  ]
+}

@@ -172,10 +172,11 @@ Or generate then open automatically:
 python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --post --out outputs\coin.wav --edit
 ```
 
-Preset library v1 (drop-in example file):
+Preset libraries (drop-in example files):
 
-- [configs/sfx_presets_v1.example.json](configs/sfx_presets_v1.example.json)
-	- Copy to `library/sfx_presets.json` if you want it to act as a local override.
+- v2 smart presets: [configs/sfx_presets_v2.example.json](configs/sfx_presets_v2.example.json)
+- v1 legacy presets: [configs/sfx_presets_v1.example.json](configs/sfx_presets_v1.example.json)
+	- Copy either example to `library/sfx_presets.json` if you want it to act as a local override.
 
 ## In-repo demo sound pack (v1)
 
@@ -236,16 +237,23 @@ S-NDB-UND.exe loop auto --in outputs\amb.wav --out outputs\amb_loop.wav
 	python -m soundgen.generate --prompt "laser zap" --seconds 2.5 --out outputs\laser.wav
 ```
 
-### SFX presets (v1 preset library)
+### SFX presets (v1 + v2 smart presets)
 
 This repo supports **concrete SFX presets** (engine + prompt + defaults + FX chain) via `--sfx-preset`.
 
+Smart presets (v2) additionally support:
+- **Families** (`families`) for shared bases
+- **Inheritance** (`inherits`) for base → variants
+- **Prompt template variables** (`vars`) where list values are randomly sampled deterministically from `--seed`
+
+Schema doc: [docs/sfx_presets_v2_schema.md](docs/sfx_presets_v2_schema.md)
+
 ```powershell
-# Uses library/sfx_presets.json if present, otherwise configs/sfx_presets_v1.example.json
+# Uses library/sfx_presets.json if present, otherwise configs/sfx_presets_v2.example.json (then v1 example)
 python -m soundgen.generate --sfx-preset creature_medium_roar --out outputs\roar.wav
 
 # Load a specific preset JSON file
-python -m soundgen.generate --sfx-preset creature_medium_roar --sfx-preset-file configs\sfx_presets_v1.example.json --out outputs\roar.wav
+python -m soundgen.generate --sfx-preset creature.small_roar --sfx-preset-file configs\sfx_presets_v2.example.json --seed 123 --out outputs\roar.wav
 ```
 
 Notes:

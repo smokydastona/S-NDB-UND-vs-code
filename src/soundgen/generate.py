@@ -17,7 +17,7 @@ from .controls import map_prompt_to_controls
 from .pro_presets import apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
 from .fx_chains import apply_fx_chain, fx_chain_keys
-from .sfx_presets import apply_sfx_preset
+from .sfx_presets import apply_sfx_preset, render_sfx_prompt_from_args
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -730,6 +730,9 @@ def main(argv: list[str] | None = None) -> int:
     # Apply pro preset after parsing so we can compare against argparse defaults.
     apply_pro_preset(preset_key=str(args.pro_preset), args=args, parser=parser)
     apply_polish_profile(profile_key=str(getattr(args, "polish_profile", "off")), args=args, parser=parser)
+
+    # Render smart preset prompt templates (vars/fragments) with the effective seed.
+    render_sfx_prompt_from_args(args=args, seed=(int(args.seed) if getattr(args, "seed", None) is not None else None))
 
     if args.duration is not None:
         args.seconds = float(args.duration)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,10 @@ class SfxPreset:
     engine_params: dict[str, Any] | None = None
     post_params: dict[str, Any] | None = None
 
+    # Smart preset v2: prompt template variables (optional).
+    # Values may be scalars or lists (lists are randomly sampled when rendering).
+    vars: dict[str, Any] | None = None
+
 
 def default_sfx_preset_paths() -> list[Path]:
     """Search order for preset libraries.
@@ -42,8 +47,60 @@ def default_sfx_preset_paths() -> list[Path]:
 
     return [
         Path("library") / "sfx_presets.json",
+        Path("configs") / "sfx_presets_v2.example.json",
         Path("configs") / "sfx_presets_v1.example.json",
     ]
+
+
+def _deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    out = dict(a)
+    for k, v in b.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(dict(out[k]), dict(v))
+        else:
+            out[k] = v
+    return out
+
+
+def render_prompt_template(
+    template: str,
+    *,
+    vars_def: dict[str, Any] | None,
+    seed: int | None,
+) -> tuple[str, dict[str, Any]]:
+    """Render a prompt template using vars.
+
+    - Template uses Python-style `{var}` placeholders.
+    - vars values can be scalars or lists; lists are randomly sampled.
+    - Returns (rendered_prompt, chosen_vars)
+    """
+
+    t = str(template or "").strip()
+    if not t:
+        return "", {}
+
+    vars_def = dict(vars_def or {})
+    rng = random.Random(int(seed) if seed is not None else None)
+
+    chosen: dict[str, Any] = {}
+    for k, v in vars_def.items():
+        key = str(k)
+        if isinstance(v, list):
+            if v:
+                chosen[key] = rng.choice(list(v))
+        else:
+            chosen[key] = v
+
+    class _SafeDict(dict):
+        def __missing__(self, key: str) -> str:
+            return "{" + key + "}"
+
+    rendered = t.format_map(_SafeDict(**{k: str(v) for k, v in chosen.items()}))
+    return rendered, chosen
+
+
+# Backwards-compat alias (internal name used in older code paths).
+_render_prompt_template = render_prompt_template
 
 
 def load_sfx_preset_library(path: str | Path) -> dict[str, SfxPreset]:
@@ -55,15 +112,55 @@ def load_sfx_preset_library(path: str | Path) -> dict[str, SfxPreset]:
     if not isinstance(presets_raw, list):
         raise ValueError(f"Invalid sfx preset library (missing presets list): {path}")
 
-    out: dict[str, SfxPreset] = {}
+    families_raw = obj.get("families")
+    families: dict[str, dict[str, Any]] = {}
+    if isinstance(families_raw, dict):
+        for k, v in families_raw.items():
+            if isinstance(v, dict):
+                families[str(k)] = dict(v)
+
+    # v2: resolve inheritance/family references from raw preset dicts.
+    raw_by_name: dict[str, dict[str, Any]] = {}
     for p in presets_raw:
-        if not isinstance(p, dict):
-            continue
-        name = str(p.get("name") or "").strip()
-        if not name:
-            continue
+        if isinstance(p, dict) and str(p.get("name") or "").strip():
+            raw_by_name[str(p.get("name")).strip()] = dict(p)
+
+    resolving: set[str] = set()
+
+    def _resolve_dict(name: str) -> dict[str, Any]:
+        if name in resolving:
+            raise ValueError(f"SFX preset inheritance cycle detected at '{name}' in {path}")
+        resolving.add(name)
+        base = dict(raw_by_name.get(name) or {})
+
+        merged: dict[str, Any] = {}
+
+        fam = base.get("family")
+        if fam is not None:
+            fam_key = str(fam).strip()
+            if fam_key:
+                fam_obj = families.get(fam_key)
+                if fam_obj is None:
+                    raise ValueError(f"Unknown sfx preset family '{fam_key}' used by '{name}' in {path}")
+                merged = _deep_merge(merged, fam_obj)
+
+        parent = base.get("inherits")
+        if parent is not None:
+            parent_key = str(parent).strip()
+            if parent_key:
+                if parent_key not in raw_by_name:
+                    raise ValueError(f"Unknown sfx preset inherits '{parent_key}' used by '{name}' in {path}")
+                merged = _deep_merge(merged, _resolve_dict(parent_key))
+
+        merged = _deep_merge(merged, base)
+        resolving.remove(name)
+        return merged
+
+    out: dict[str, SfxPreset] = {}
+    for name in raw_by_name.keys():
+        p = _resolve_dict(name)
         preset = SfxPreset(
-            name=name,
+            name=str(name),
             engine=str(p.get("engine") or "").strip(),
             prompt=str(p.get("prompt") or "").strip(),
             negative_prompt=(str(p["negative_prompt"]).strip() if p.get("negative_prompt") is not None else None),
@@ -74,6 +171,7 @@ def load_sfx_preset_library(path: str | Path) -> dict[str, SfxPreset]:
             post=(bool(p["post"]) if p.get("post") is not None else None),
             engine_params=(dict(p.get("engine_params") or {}) if isinstance(p.get("engine_params"), dict) else None),
             post_params=(dict(p.get("post_params") or {}) if isinstance(p.get("post_params"), dict) else None),
+            vars=(dict(p.get("vars") or {}) if isinstance(p.get("vars"), dict) else None),
         )
 
         if not preset.engine:
@@ -146,6 +244,13 @@ def apply_sfx_preset(*, preset_key: str, preset_file: str | None, args: Any, par
     if hasattr(args, "prompt") and getattr(args, "prompt", None) in {None, ""}:
         setattr(args, "prompt", preset.prompt)
 
+    # Preserve template vars for later render (batch can re-render per-item seed).
+    if preset.vars is not None:
+        try:
+            setattr(args, "sfx_preset_vars", dict(preset.vars))
+        except Exception:
+            pass
+
     # Alias for Stable Audio negative prompt
     if preset.negative_prompt is not None and hasattr(args, "stable_audio_negative_prompt"):
         if getattr(args, "stable_audio_negative_prompt") == parser.get_default("stable_audio_negative_prompt"):
@@ -180,3 +285,23 @@ def apply_sfx_preset(*, preset_key: str, preset_file: str | None, args: Any, par
     _apply_args_patch(args=args, parser=parser, patch=(preset.post_params or {}))
 
     return preset, lib_path
+
+
+def render_sfx_prompt_from_args(*, args: Any, seed: int | None) -> dict[str, Any] | None:
+    """If args has an sfx preset template vars dict, render args.prompt in-place.
+
+    Returns chosen vars dict if rendering happened, else None.
+    """
+
+    vars_def = getattr(args, "sfx_preset_vars", None)
+    if not isinstance(vars_def, dict) or not getattr(args, "prompt", None):
+        return None
+    rendered, chosen = render_prompt_template(str(getattr(args, "prompt")), vars_def=vars_def, seed=seed)
+    if rendered:
+        setattr(args, "prompt", rendered)
+        try:
+            setattr(args, "sfx_preset_vars_chosen", dict(chosen))
+        except Exception:
+            pass
+        return chosen
+    return None
