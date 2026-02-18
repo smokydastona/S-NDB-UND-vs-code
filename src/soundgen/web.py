@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import gradio as gr
 import numpy as np
@@ -18,6 +22,280 @@ from .controls import map_prompt_to_controls
 from .pro_presets import PRO_PRESETS, get_pro_preset, pro_preset_keys, pro_preset_recommended_profile
 from .polish_profiles import POLISH_PROFILES, polish_profile_keys
 from .fx_chains import FX_CHAINS, fx_chain_keys, load_fx_chain_json
+
+
+def _as_existing_path(v: object) -> Path | None:
+    if v is None:
+        return None
+    if isinstance(v, (str, Path)):
+        p = Path(str(v))
+        return p if p.exists() else None
+    name = getattr(v, "name", None)
+    if name:
+        p = Path(str(name))
+        return p if p.exists() else None
+    if isinstance(v, dict) and v.get("name"):
+        p = Path(str(v["name"]))
+        return p if p.exists() else None
+    return None
+
+
+def _run_subprocess(argv: list[str]) -> str:
+    completed = subprocess.run(argv, capture_output=True, text=True)
+    out = (completed.stdout or "") + ("\n" if completed.stdout and completed.stderr else "") + (completed.stderr or "")
+    out = out.strip()
+    if completed.returncode != 0:
+        return (out + f"\n(exit {completed.returncode})").strip()
+    return out or "(ok)"
+
+
+def _ui_launch_editor(wav_file: object) -> str:
+    p = _as_existing_path(wav_file)
+    if p is None:
+        return "Pick a WAV file first."
+
+    # Run editor in a separate process so Gradio callbacks don't block.
+    try:
+        subprocess.Popen([sys.executable, "-m", "soundgen.app", "edit", str(p)])
+        return f"Launched editor for: {p}"
+    except Exception as e:
+        return f"Failed to launch editor: {e}"
+
+
+def _ui_project_load(project_root: str) -> tuple[dict[str, Any] | None, list[list[object]]]:
+    root = Path(str(project_root or "").strip() or ".")
+    try:
+        from .project import load_project
+
+        proj = load_project(root)
+    except Exception as e:
+        return {"error": str(e), "root": str(root)}, []
+
+    rows: list[list[object]] = []
+    for it in (proj.get("items") or []):
+        if not isinstance(it, dict):
+            continue
+        rows.append(
+            [
+                it.get("id"),
+                it.get("category"),
+                it.get("engine"),
+                it.get("event"),
+                it.get("sound_path"),
+                it.get("variants"),
+                it.get("active_version"),
+            ]
+        )
+
+    return proj, rows
+
+
+def _ui_project_build(project_root: str, item_id: str) -> str:
+    root = str(project_root or "").strip()
+    if not root:
+        return "Set Project root first."
+    args = [sys.executable, "-m", "soundgen.app", "project", "build", "--root", root]
+    if str(item_id or "").strip():
+        args += ["--id", str(item_id).strip()]
+    return _run_subprocess(args)
+
+
+def _ui_project_edit(project_root: str, item_id: str) -> str:
+    root = str(project_root or "").strip()
+    iid = str(item_id or "").strip()
+    if not root or not iid:
+        return "Set Project root and Item id first."
+
+    # Launch in a separate process to avoid blocking the web UI.
+    try:
+        subprocess.Popen([sys.executable, "-m", "soundgen.app", "project", "edit", "--root", root, "--id", iid])
+        return f"Launched editor for item: {iid}"
+    except Exception as e:
+        return f"Failed to launch: {e}"
+
+
+def _ui_export_existing(
+    source_file: object,
+    out_format: str,
+    out_sample_rate: int | None,
+    wav_subtype: str,
+    mp3_bitrate: str,
+    export_minecraft: bool,
+    mc_target: str,
+    pack_root: str,
+    namespace: str,
+    event: str,
+    sound_path: str,
+    subtitle: str,
+    subtitle_key: str,
+    weight: int,
+    volume: float,
+    pitch: float,
+    ogg_quality: int,
+    mc_sample_rate: int,
+    mc_channels: int,
+) -> tuple[str, str]:
+    p = _as_existing_path(source_file)
+    if p is None:
+        return "", "Pick a source file first."
+
+    fmt = str(out_format or "wav").strip().lower()
+    if fmt not in {"wav", "mp3", "ogg", "flac"}:
+        fmt = "wav"
+
+    # Ensure we have a WAV for pack export / subtype handling.
+    wav_in = p
+    if p.suffix.lower() != ".wav":
+        tmp = Path("outputs") / "_tmp_export.wav"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        convert_audio_with_ffmpeg(p, tmp, sample_rate=None, channels=1, out_format="wav")
+        wav_in = tmp
+
+    if export_minecraft:
+        ogg_path = export_wav_to_minecraft_pack(
+            wav_in,
+            pack_root=Path(pack_root or "resourcepack"),
+            namespace=(namespace or "soundgen"),
+            event=(event or "generated.web"),
+            sound_path=(sound_path or "generated/web"),
+            subtitle=(subtitle or None),
+            subtitle_key=(str(subtitle_key).strip() or None),
+            ogg_quality=int(ogg_quality),
+            sample_rate=int(mc_sample_rate) if mc_sample_rate else 44100,
+            channels=int(mc_channels) if mc_channels else 1,
+            weight=max(1, int(weight)),
+            volume=float(volume),
+            pitch=float(pitch),
+            write_pack_mcmeta=(mc_target == "resourcepack"),
+        )
+        playsound = f"/playsound {(namespace or 'soundgen')}:{(event or 'generated.web')} master @s"
+        return str(ogg_path), playsound
+
+    out_file = Path("outputs") / f"export_{p.stem}.{fmt}"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if fmt == "wav":
+        a, sr = read_wav_mono(wav_in)
+        sr_out = int(out_sample_rate) if out_sample_rate else int(sr)
+        if sr_out != int(sr):
+            convert_audio_with_ffmpeg(wav_in, out_file, sample_rate=sr_out, channels=1, out_format="wav")
+            a2, sr2 = read_wav_mono(out_file)
+            write_wav(out_file, a2.astype(np.float32, copy=False), int(sr2), subtype=str(wav_subtype))
+        else:
+            write_wav(out_file, a.astype(np.float32, copy=False), int(sr), subtype=str(wav_subtype))
+        return str(out_file), ""
+
+    convert_audio_with_ffmpeg(
+        wav_in,
+        out_file,
+        sample_rate=(int(out_sample_rate) if out_sample_rate else None),
+        channels=1,
+        out_format=fmt,
+        ogg_quality=int(ogg_quality),
+        mp3_bitrate=str(mp3_bitrate or "192k"),
+    )
+    return str(out_file), ""
+
+
+def _ui_fx_modules_md() -> str:
+    from .fx_chain_v2 import fx_module_v2_ids, get_fx_module_v2
+
+    lines: list[str] = []
+    for mid in fx_module_v2_ids():
+        m = get_fx_module_v2(mid)
+        if m is None:
+            continue
+        lines.append(f"- `{m.module_id}`: {m.title} — {m.description}")
+    return "\n".join(lines) if lines else "(no modules found)"
+
+
+def _ui_fx_chain_load(chain_file: object) -> tuple[str, str]:
+    from .fx_chain_v2 import FxChainV2, dump_fx_chain_v2_json, is_fx_chain_v2_json, load_fx_chain_v2_json
+
+    p = _as_existing_path(chain_file)
+    if p is not None and is_fx_chain_v2_json(p):
+        chain = load_fx_chain_v2_json(p)
+    else:
+        name = (p.stem if p is not None else "fx_chain")
+        chain = FxChainV2(name=name, steps=(), description=None)
+
+    obj = dump_fx_chain_v2_json(chain)
+    return json.dumps(obj, ensure_ascii=False, indent=2) + "\n", f"Loaded chain: {chain.name}"
+
+
+def _ui_fx_chain_save(chain_json: str, out_path: str) -> str:
+    from .fx_chain_v2 import FxChainV2, FxStepV2, dump_fx_chain_v2_json
+
+    try:
+        obj = json.loads(str(chain_json or "{}"))
+        if not isinstance(obj, dict):
+            return "Chain JSON must be an object."
+    except Exception as e:
+        return f"Invalid JSON: {e}"
+
+    steps_obj = obj.get("steps")
+    if not isinstance(steps_obj, list):
+        steps_obj = []
+
+    steps: list[FxStepV2] = []
+    for it in steps_obj:
+        if not isinstance(it, dict):
+            continue
+        mid = str(it.get("id") or it.get("module") or "").strip().lower()
+        if not mid:
+            continue
+        params = it.get("params")
+        steps.append(FxStepV2(module_id=mid, params=(dict(params) if isinstance(params, dict) else {})))
+
+    name = str(obj.get("name") or "fx_chain").strip() or "fx_chain"
+    desc = (str(obj.get("description")).strip() if obj.get("description") is not None else None)
+    chain = FxChainV2(name=name, steps=tuple(steps), description=desc)
+
+    out = Path(str(out_path or "").strip() or "configs/fx_chain_v2.web.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(dump_fx_chain_v2_json(chain), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return f"Saved: {out}"
+
+
+def _ui_fx_chain_apply(chain_json: str, wav_file: object) -> tuple[tuple[int, np.ndarray] | None, str]:
+    from .fx_chain_v2 import FxChainV2, FxStepV2, apply_fx_chain_v2
+
+    p = _as_existing_path(wav_file)
+    if p is None:
+        return None, "Pick a WAV to audition."
+    if p.suffix.lower() != ".wav":
+        return None, "Audition currently requires a .wav input."
+
+    try:
+        obj = json.loads(str(chain_json or "{}"))
+        if not isinstance(obj, dict):
+            return None, "Chain JSON must be an object."
+    except Exception as e:
+        return None, f"Invalid chain JSON: {e}"
+
+    steps_obj = obj.get("steps")
+    if not isinstance(steps_obj, list):
+        steps_obj = []
+
+    steps: list[FxStepV2] = []
+    for it in steps_obj:
+        if not isinstance(it, dict):
+            continue
+        mid = str(it.get("id") or it.get("module") or "").strip().lower()
+        if not mid:
+            continue
+        params = it.get("params")
+        steps.append(FxStepV2(module_id=mid, params=(dict(params) if isinstance(params, dict) else {})))
+
+    chain = FxChainV2(
+        name=str(obj.get("name") or "fx_chain").strip() or "fx_chain",
+        steps=tuple(steps),
+        description=(str(obj.get("description")).strip() if obj.get("description") is not None else None),
+    )
+
+    audio, sr = read_wav_mono(p)
+    y = apply_fx_chain_v2(audio, int(sr), chain)
+    return (int(sr), y.astype(np.float32, copy=False)), "Applied FX chain."
 
 
 def _generate(
@@ -1600,6 +1878,142 @@ def build_demo() -> gr.Blocks:
             ],
             outputs=[out_file, playsound_cmd, info, wave, spec],
         )
+
+        gr.Markdown("## Panels")
+        with gr.Tabs():
+            with gr.Tab("Preset browser"):
+                gr.Markdown(
+                    "Browse the built-in preset systems. This is intentionally lightweight: pick a preset to see what it does."
+                )
+                with gr.Row():
+                    pb_pro = gr.Dropdown(["off", *pro_preset_keys()], value="off", label="Pro preset")
+                    pb_profile = gr.Dropdown(["off", *polish_profile_keys()], value="off", label="Polish profile")
+                pb_pro_info = gr.Markdown("", visible=False)
+                pb_profile_info = gr.Markdown("", visible=False)
+
+                pb_pro.change(fn=_preset_info_md, inputs=[pb_pro], outputs=[pb_pro_info])
+                pb_profile.change(fn=_profile_info_md, inputs=[pb_profile], outputs=[pb_profile_info])
+
+                gr.Markdown("### rfxgen presets")
+                gr.Markdown("\n".join([f"- `{p}`" for p in SUPPORTED_PRESETS]))
+
+                gr.Markdown("### FX chains (v1)")
+                gr.Markdown("\n".join([f"- `{k}`" for k in fx_chain_keys()]))
+
+            with gr.Tab("Waveform editor"):
+                gr.Markdown(
+                    "Launch the built-in destructive editor on a WAV. "
+                    "This opens a separate window on the machine running the UI (desktop/local use)."
+                )
+                ed_wav = gr.File(label="WAV to edit", file_types=[".wav"])
+                ed_btn = gr.Button("Open editor")
+                ed_status = gr.Textbox(label="Status", interactive=False)
+                ed_btn.click(fn=_ui_launch_editor, inputs=[ed_wav], outputs=[ed_status])
+
+            with gr.Tab("FX chain editor"):
+                gr.Markdown("Edit FX chain v2 JSON, reorder steps, audition, and save.")
+                fx_modules = gr.Markdown(_ui_fx_modules_md())
+                gr.Markdown("### Chain")
+                fx_chain_file = gr.File(label="Load chain JSON (optional)", file_types=[".json"])
+                fx_load_btn = gr.Button("Load")
+                fx_chain_json = gr.Textbox(label="Chain JSON", lines=14, value="")
+                fx_chain_status = gr.Textbox(label="Status", interactive=False)
+                fx_load_btn.click(fn=_ui_fx_chain_load, inputs=[fx_chain_file], outputs=[fx_chain_json, fx_chain_status])
+
+                with gr.Row():
+                    fx_save_path = gr.Textbox(value="configs/fx_chain_v2.web.json", label="Save path")
+                    fx_save_btn = gr.Button("Save")
+                fx_save_btn.click(fn=_ui_fx_chain_save, inputs=[fx_chain_json, fx_save_path], outputs=[fx_chain_status])
+
+                gr.Markdown("### Audition")
+                fx_wav = gr.File(label="WAV for audition", file_types=[".wav"])
+                fx_aud_btn = gr.Button("Apply + audition")
+                fx_audio_out = gr.Audio(label="Result", type="numpy")
+                fx_aud_btn.click(fn=_ui_fx_chain_apply, inputs=[fx_chain_json, fx_wav], outputs=[fx_audio_out, fx_chain_status])
+
+            with gr.Tab("Project browser"):
+                gr.Markdown("Load a project, list items, build items, and open the editor on an item.")
+                pr_root = gr.Textbox(value=".", label="Project root")
+                pr_load_btn = gr.Button("Load project")
+                pr_json = gr.JSON(label="Project")
+                pr_items = gr.Dataframe(
+                    headers=["id", "category", "engine", "event", "sound_path", "variants", "active_version"],
+                    datatype=["str", "str", "str", "str", "str", "number", "number"],
+                    row_count=(0, "dynamic"),
+                    col_count=(7, "fixed"),
+                    interactive=False,
+                    label="Items",
+                )
+                pr_status = gr.Textbox(label="Status", interactive=False)
+                pr_load_btn.click(fn=_ui_project_load, inputs=[pr_root], outputs=[pr_json, pr_items])
+
+                with gr.Row():
+                    pr_item_id = gr.Textbox(value="", label="Item id (optional)")
+                    pr_build_btn = gr.Button("Build")
+                    pr_edit_btn = gr.Button("Open editor")
+                pr_build_btn.click(fn=_ui_project_build, inputs=[pr_root, pr_item_id], outputs=[pr_status])
+                pr_edit_btn.click(fn=_ui_project_edit, inputs=[pr_root, pr_item_id], outputs=[pr_status])
+
+            with gr.Tab("Export panel"):
+                gr.Markdown("Export an existing audio file to WAV/MP3/OGG/FLAC, or export into a Minecraft pack.")
+                ex_file = gr.File(label="Source audio", file_types=[".wav", ".mp3", ".ogg", ".flac"])
+                with gr.Row():
+                    ex_fmt = gr.Dropdown(["wav", "mp3", "ogg", "flac"], value="wav", label="Output format")
+                    ex_sr = gr.Number(value=None, precision=0, label="Sample rate (optional)")
+                with gr.Row():
+                    ex_wav_subtype = gr.Dropdown(["PCM_16", "PCM_24", "FLOAT"], value="PCM_16", label="WAV subtype")
+                    ex_mp3_bitrate = gr.Textbox(value="192k", label="MP3 bitrate")
+
+                gr.Markdown("### Minecraft export")
+                ex_mc = gr.Checkbox(value=False, label="Export to Minecraft (.ogg + sounds.json)")
+                with gr.Row():
+                    ex_mc_target = gr.Dropdown(["resourcepack", "forge"], value="resourcepack", label="Target")
+                    ex_pack_root = gr.Textbox(value="resourcepack", label="Pack/Resources root")
+                with gr.Row():
+                    ex_ns = gr.Textbox(value="soundgen", label="Namespace (modid)")
+                    ex_event = gr.Textbox(value="generated.web", label="Event (sounds.json key)")
+                with gr.Row():
+                    ex_sound_path = gr.Textbox(value="generated/web", label="Sound path (under sounds/, no extension)")
+                    ex_subtitle = gr.Textbox(value="", label="Subtitle (optional)")
+                    ex_subtitle_key = gr.Textbox(value="", label="Subtitle key (optional)")
+                with gr.Row():
+                    ex_weight = gr.Slider(1, 20, value=1, step=1, label="Weight")
+                    ex_volume = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Volume")
+                    ex_pitch = gr.Slider(0.5, 2.0, value=1.0, step=0.05, label="Pitch")
+                    ex_ogg_quality = gr.Slider(0, 10, value=5, step=1, label="OGG quality")
+                with gr.Row():
+                    ex_mc_sample_rate = gr.Dropdown([22050, 32000, 44100, 48000], value=44100, label="Sample rate")
+                    ex_mc_channels = gr.Dropdown([1, 2], value=1, label="Channels")
+
+                ex_btn = gr.Button("Export")
+                ex_out = gr.File(label="Exported file")
+                ex_playsound = gr.Textbox(label="Minecraft playsound", interactive=False)
+
+                ex_btn.click(
+                    fn=_ui_export_existing,
+                    inputs=[
+                        ex_file,
+                        ex_fmt,
+                        ex_sr,
+                        ex_wav_subtype,
+                        ex_mp3_bitrate,
+                        ex_mc,
+                        ex_mc_target,
+                        ex_pack_root,
+                        ex_ns,
+                        ex_event,
+                        ex_sound_path,
+                        ex_subtitle,
+                        ex_subtitle_key,
+                        ex_weight,
+                        ex_volume,
+                        ex_pitch,
+                        ex_ogg_quality,
+                        ex_mc_sample_rate,
+                        ex_mc_channels,
+                    ],
+                    outputs=[ex_out, ex_playsound],
+                )
 
     return demo
 

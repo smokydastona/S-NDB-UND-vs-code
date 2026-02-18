@@ -42,6 +42,27 @@ This repo intentionally does not commit generated audio or packs. Screenshots/GI
 - Web UI: `python -m soundgen.web`
 - Desktop UI: `python -m soundgen.desktop`
 
+## GUI v1 (v2.8) panels
+
+Run the UI:
+
+```powershell
+# Browser-based UI
+python -m soundgen.web
+
+# Desktop window (embedded webview)
+python -m soundgen.desktop
+```
+
+Panels available in the UI:
+
+- **Generate panel**: the main prompt→sound workflow (engine, prompt, duration, post/polish, FX chain v1, Minecraft export).
+- **Preset browser**: browse pro presets, polish profiles, and rfxgen presets.
+- **Waveform editor**: open any WAV in the built-in destructive editor (launches a separate window).
+- **FX chain editor**: edit FX chain v2 JSON, audition on a WAV, and save.
+- **Project browser**: load a project folder, list items, build items, and open an item in the editor.
+- **Export panel**: export existing audio to WAV/MP3/OGG/FLAC or into a Minecraft pack.
+
 Suggested folder: `docs/screenshots/` and then link them here.
 
 ## Architecture (high level)

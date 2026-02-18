@@ -69,7 +69,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: hybrid mode controls + preset variables + FX override + editor region export controls
   - **Done gate**: README usage examples
 
-- **v2.8 GUI v1 (First Real Interface)** — **Next**
+- **v2.8 GUI v1 (First Real Interface)** — **Done**
   - **Done gate**: preset browser + generate panel + waveform editor + FX chain editor + project browser + export panel
   - **Done gate**: install/run docs
 
