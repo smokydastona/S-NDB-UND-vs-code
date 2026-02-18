@@ -15,6 +15,8 @@ from .postprocess import PostProcessParams, post_process_audio
 from .credits import upsert_pack_credits
 from .pro_presets import PRO_PRESETS, apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
+from .fx_chains import apply_fx_chain, fx_chain_keys
+from .sfx_presets import apply_sfx_preset
 
 
 def _default_sound_path(namespace: str, event: str) -> str:
@@ -141,6 +143,21 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Batch-generate Minecraft sounds from a CSV/JSON manifest.")
     p.add_argument("--manifest", required=True, help="Path to .json/.csv manifest")
 
+    # Concrete SFX presets (optional): engine + prompt + defaults + FX chain.
+    p.add_argument(
+        "--sfx-preset",
+        default="off",
+        help=(
+            "Apply a concrete SFX preset (engine + prompt + defaults + FX chain). "
+            "Searches library/sfx_presets.json then configs/sfx_presets_v1.example.json."
+        ),
+    )
+    p.add_argument(
+        "--sfx-preset-file",
+        default=None,
+        help="Path to a JSON preset library file containing a 'presets' list.",
+    )
+
     p.add_argument("--pack-root", default="resourcepack", help="Resource pack root or Forge resources root")
     p.add_argument("--mc-target", choices=["resourcepack", "forge"], default="resourcepack")
     p.add_argument("--ogg-quality", type=int, default=5)
@@ -172,6 +189,19 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["off", *polish_profile_keys()],
         default="off",
         help="Named post/polish profile (AAA-style chain). Only overrides values still at their defaults.",
+    )
+
+    # FX chains (v1): named chains + optional JSON definition.
+    p.add_argument(
+        "--fx-chain",
+        choices=["off", *fx_chain_keys()],
+        default="off",
+        help="Named FX chain preset (shareable post chain). Only overrides values still at their defaults.",
+    )
+    p.add_argument(
+        "--fx-chain-json",
+        default=None,
+        help="Load an FX chain JSON file. Supports either an args-patch JSON or an effect-list JSON.",
     )
     p.add_argument("--polish", action="store_true", help="Enable conservative denoise/transient/compress/limit defaults")
     p.add_argument("--emotion", choices=["neutral", "aggressive", "calm", "scared"], default="neutral")
@@ -248,6 +278,22 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
 
     # Per-item overrides (manifest) layered on top of CLI defaults.
     effective_args = argparse.Namespace(**vars(args))
+
+    # Apply concrete SFX preset (manifest item wins over CLI).
+    sfx_preset_obj = None
+    sfx_preset_lib = None
+    sfx_key = str(getattr(item, "sfx_preset", None) or getattr(args, "sfx_preset", "off") or "off").strip()
+    sfx_file = str(getattr(item, "sfx_preset_file", None) or getattr(args, "sfx_preset_file", None) or "").strip() or None
+    if sfx_key and sfx_key.lower() != "off":
+        try:
+            sfx_preset_obj, sfx_preset_lib = apply_sfx_preset(
+                preset_key=sfx_key,
+                preset_file=sfx_file,
+                args=effective_args,
+                parser=parser,
+            )
+        except ValueError as e:
+            raise ValueError(f"Manifest item preset error (event={item.event}): {e}") from e
     if item.pro_preset:
         effective_args.pro_preset = str(item.pro_preset)
         apply_pro_preset(preset_key=str(item.pro_preset), args=effective_args, parser=parser)
@@ -268,11 +314,42 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
     if item.loop_crossfade_ms is not None:
         effective_args.loop_crossfade_ms = int(item.loop_crossfade_ms)
 
+    # Resolve prompt/engine/seconds with preset support.
+    engine = str(getattr(item, "engine", None) or "").strip() or None
+    prompt = str(getattr(item, "prompt", "") or "").strip()
+    seconds = item.seconds
+    seed_base = item.seed
+
+    if sfx_preset_obj is not None:
+        # If engine/prompt/seconds omitted (or left as the manifest defaults), fill from preset.
+        if not prompt:
+            prompt = str(sfx_preset_obj.prompt)
+        if (engine is None) or (engine == "rfxgen"):
+            engine = str(sfx_preset_obj.engine)
+        if seconds is None:
+            seconds = sfx_preset_obj.seconds
+        if seed_base is None:
+            seed_base = sfx_preset_obj.seed
+
+    preset_engine_params: dict = dict(getattr(sfx_preset_obj, "engine_params", None) or {}) if sfx_preset_obj is not None else {}
+
+    if not prompt:
+        raise ValueError(f"Manifest item missing prompt (event={item.event}).")
+    if engine is None:
+        engine = "rfxgen"
+    if seconds is None:
+        seconds = 3.0
+
+    # Apply FX chain (manifest item wins over preset wins over CLI).
+    fx_chain_key = str(getattr(item, "fx_chain", None) or getattr(effective_args, "fx_chain", "off") or "off").strip()
+    fx_chain_json = str(getattr(item, "fx_chain_json", None) or getattr(effective_args, "fx_chain_json", None) or "").strip() or None
+    apply_fx_chain(chain_key=fx_chain_key, chain_json=fx_chain_json, args=effective_args, parser=parser)
+
     namespace = item.namespace
     event = (item.event or "").strip()
     if not event:
         # Automatic naming for modder workflows: derive an event id from the prompt.
-        event = f"generated.batch.{_slug(item.prompt)}"
+        event = f"generated.batch.{_slug(prompt)}"
 
     base_sound_path = item.sound_path or _default_sound_path(namespace, event)
     out_files: list[Path] = []
@@ -289,20 +366,20 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
 
             tmp_wav = tmp_dir / f"{namespace}_{event.replace('.', '_')}{suffix}.wav"
 
-            seed_i = (int(item.seed) + i) if item.seed is not None else None
+            seed_i = (int(seed_base) + i) if seed_base is not None else None
 
-            if item.engine == "samplelib" and not zip_args:
+            if engine == "samplelib" and not zip_args:
                 raise FileNotFoundError(
                     "engine=samplelib but no --library-zip provided and no default zips found at .examples/sound libraies/*.zip"
                 )
 
             pitch_contour = str(getattr(effective_args, "pitch_contour", "flat") or "flat")
-            effective_prompt = item.prompt
+            effective_prompt = prompt
 
             # Optional pro preset prompt augmentation (only for AI/sample selection engines).
             preset_key = str(getattr(effective_args, "pro_preset", "off") or "off").strip()
             preset_obj = PRO_PRESETS.get(preset_key) if preset_key.lower() != "off" else None
-            if preset_obj is not None and preset_obj.prompt_suffix and item.engine in {"diffusers", "replicate", "samplelib", "layered"}:
+            if preset_obj is not None and preset_obj.prompt_suffix and engine in {"diffusers", "replicate", "samplelib", "layered", "stable_audio_open"}:
                 suf = str(preset_obj.prompt_suffix).strip()
                 if suf and suf.lower() not in effective_prompt.lower():
                     effective_prompt = f"{effective_prompt}, {suf}"
@@ -319,9 +396,9 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
                 return processed, "post"
 
             generated = generate_wav(
-                item.engine,
+                engine,
                 prompt=effective_prompt,
-                seconds=float(item.seconds),
+                seconds=float(seconds),
                 seed=seed_i,
                 out_wav=tmp_wav,
                 postprocess_fn=(_pp if item.post else None),
@@ -331,21 +408,50 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
                 diffusers_multiband_mode=str(getattr(effective_args, "diffusers_mb_mode", "auto")),
                 diffusers_multiband_low_hz=float(getattr(effective_args, "diffusers_mb_low_hz", 250.0)),
                 diffusers_multiband_high_hz=float(getattr(effective_args, "diffusers_mb_high_hz", 3000.0)),
-                preset=item.preset,
-                layered_preset=(item.preset or "auto"),
+                preset=(
+                    item.preset
+                    or (str(preset_engine_params.get("rfxgen_preset")).strip() if preset_engine_params.get("rfxgen_preset") else None)
+                    or (str(preset_engine_params.get("preset")).strip() if preset_engine_params.get("preset") else None)
+                    or None
+                ),
+                layered_preset=(
+                    item.preset
+                    or (str(preset_engine_params.get("layered_preset")).strip() if preset_engine_params.get("layered_preset") else None)
+                    or "auto"
+                ),
                 rfxgen_path=(Path(effective_args.rfxgen_path) if effective_args.rfxgen_path else None),
                 library_zips=tuple(Path(p) for p in zip_args),
                 library_pitch_min=float(effective_args.library_pitch_min),
                 library_pitch_max=float(effective_args.library_pitch_max),
-                stable_audio_model=(str(item.stable_audio_model) if item.stable_audio_model else None),
+                stable_audio_model=(
+                    str(item.stable_audio_model)
+                    if item.stable_audio_model
+                    else (str(preset_engine_params.get("stable_audio_model")).strip() if preset_engine_params.get("stable_audio_model") else None)
+                ),
                 stable_audio_negative_prompt=(
-                    str(item.stable_audio_negative_prompt) if item.stable_audio_negative_prompt else None
+                    str(item.stable_audio_negative_prompt)
+                    if item.stable_audio_negative_prompt
+                    else (
+                        str(getattr(sfx_preset_obj, "negative_prompt", None)).strip()
+                        if (sfx_preset_obj is not None and getattr(sfx_preset_obj, "negative_prompt", None))
+                        else (str(preset_engine_params.get("stable_audio_negative_prompt")).strip() if preset_engine_params.get("stable_audio_negative_prompt") else None)
+                    )
                 ),
-                stable_audio_steps=(int(item.stable_audio_steps) if item.stable_audio_steps is not None else 100),
+                stable_audio_steps=(
+                    int(item.stable_audio_steps)
+                    if item.stable_audio_steps is not None
+                    else (int(preset_engine_params["stable_audio_steps"]) if preset_engine_params.get("stable_audio_steps") is not None else 100)
+                ),
                 stable_audio_guidance_scale=(
-                    float(item.stable_audio_guidance_scale) if item.stable_audio_guidance_scale is not None else 7.0
+                    float(item.stable_audio_guidance_scale)
+                    if item.stable_audio_guidance_scale is not None
+                    else (float(preset_engine_params["stable_audio_guidance_scale"]) if preset_engine_params.get("stable_audio_guidance_scale") is not None else 7.0)
                 ),
-                stable_audio_sampler=(str(item.stable_audio_sampler) if item.stable_audio_sampler else None),
+                stable_audio_sampler=(
+                    str(item.stable_audio_sampler)
+                    if item.stable_audio_sampler
+                    else (str(preset_engine_params.get("stable_audio_sampler")).strip() if preset_engine_params.get("stable_audio_sampler") else None)
+                ),
                 stable_audio_hf_token=(str(item.stable_audio_hf_token) if item.stable_audio_hf_token else None),
                 sample_rate=44100,
             )
@@ -373,17 +479,22 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
 
             # Pack credits for all engines.
             credits: dict = {
-                "engine": item.engine,
-                "prompt": item.prompt,
+                "engine": engine,
+                "prompt": prompt,
                 "emotion": str(getattr(effective_args, "emotion", "neutral") or "neutral"),
                 "intensity": float(getattr(effective_args, "intensity", 0.0) or 0.0),
                 "variation": float(getattr(effective_args, "variation", 0.0) or 0.0),
                 "pitch_contour": pitch_contour,
                 "pro_preset": str(getattr(effective_args, "pro_preset", "off")),
                 "polish_profile": str(getattr(effective_args, "polish_profile", "off")),
+                "fx_chain": fx_chain_key,
                 "loop_clean": bool(getattr(effective_args, "loop", False)),
                 "loop_crossfade_ms": int(getattr(effective_args, "loop_crossfade_ms", 100)),
             }
+            if sfx_preset_obj is not None:
+                credits["sfx_preset"] = str(sfx_preset_obj.name)
+            if sfx_preset_lib is not None:
+                credits["sfx_preset_library"] = str(sfx_preset_lib)
             credits.update({k: v for k, v in generated.credits_extra.items() if v is not None})
             if sources:
                 credits["sources"] = list(sources)
@@ -399,16 +510,16 @@ def run_item(item: ManifestItem, *, args: argparse.Namespace, parser: argparse.A
             append_record(
                 Path(effective_args.catalog),
                 make_record(
-                    engine=item.engine,
-                    prompt=item.prompt,
+                    engine=engine,
+                    prompt=prompt,
                     namespace=namespace,
                     event=event,
                     sound_path=sound_path,
                     output_file=ogg_path,
                     tags=item.tags,
                     sources=sources,
-                    seconds=item.seconds,
-                    seed=item.seed,
+                    seconds=seconds,
+                    seed=seed_base,
                     preset=item.preset,
                 ),
             )

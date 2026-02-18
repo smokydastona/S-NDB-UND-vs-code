@@ -9,16 +9,24 @@ from typing import Any, Optional
 
 @dataclass(frozen=True)
 class ManifestItem:
-    prompt: str
-    engine: str = "rfxgen"  # diffusers | rfxgen | replicate | samplelib | synth | layered
+    # Either `prompt` or `sfx_preset` must be provided.
+    prompt: str = ""
+    sfx_preset: Optional[str] = None
+    sfx_preset_file: Optional[str] = None
+
+    engine: Optional[str] = None  # diffusers | stable_audio_open | rfxgen | replicate | samplelib | synth | layered
 
     namespace: str = "soundgen"
     event: str = "generated.sound"
     sound_path: Optional[str] = None
 
-    seconds: float = 3.0
+    seconds: Optional[float] = None
     seed: Optional[int] = None
     preset: Optional[str] = None  # rfxgen
+
+    # FX chains (optional; primarily used by batch workflows)
+    fx_chain: Optional[str] = None
+    fx_chain_json: Optional[str] = None
 
     # stable_audio_open (optional)
     stable_audio_model: Optional[str] = None
@@ -92,13 +100,18 @@ def _coerce_tags(v: Any) -> tuple[str, ...]:
 def _item_from_mapping(m: dict[str, Any]) -> ManifestItem:
     return ManifestItem(
         prompt=str(m.get("prompt") or "").strip(),
-        engine=str(m.get("engine") or "rfxgen").strip(),
+        sfx_preset=(str(m["sfx_preset"]).strip() if m.get("sfx_preset") else None),
+        sfx_preset_file=(str(m["sfx_preset_file"]).strip() if m.get("sfx_preset_file") else None),
+        engine=(str(m["engine"]).strip() if m.get("engine") else None),
         namespace=str(m.get("namespace") or "soundgen").strip(),
         event=str(m.get("event") or "generated.sound").strip(),
         sound_path=(str(m["sound_path"]).strip() if m.get("sound_path") else None),
-        seconds=_coerce_float(m.get("seconds"), 3.0),
+        seconds=(_coerce_float(m.get("seconds"), 3.0) if m.get("seconds") not in (None, "") else None),
         seed=(int(m["seed"]) if m.get("seed") not in (None, "") else None),
         preset=(str(m["preset"]).strip() if m.get("preset") else None),
+
+        fx_chain=(str(m["fx_chain"]).strip() if m.get("fx_chain") else None),
+        fx_chain_json=(str(m["fx_chain_json"]).strip() if m.get("fx_chain_json") else None),
 
         stable_audio_model=(str(m["stable_audio_model"]).strip() if m.get("stable_audio_model") else None),
         stable_audio_negative_prompt=(
@@ -150,8 +163,8 @@ def load_manifest(path: Path) -> list[ManifestItem]:
             if not isinstance(raw, dict):
                 raise ValueError("Each JSON manifest entry must be an object.")
             item = _item_from_mapping(raw)
-            if not item.prompt:
-                raise ValueError("Manifest item missing 'prompt'.")
+            if not item.prompt and not item.sfx_preset:
+                raise ValueError("Manifest item missing 'prompt' (or provide 'sfx_preset').")
             out.append(item)
         return out
 
@@ -162,8 +175,8 @@ def load_manifest(path: Path) -> list[ManifestItem]:
             out: list[ManifestItem] = []
             for row in reader:
                 item = _item_from_mapping(row)
-                if not item.prompt:
-                    raise ValueError("Manifest row missing 'prompt'.")
+                if not item.prompt and not item.sfx_preset:
+                    raise ValueError("Manifest row missing 'prompt' (or provide 'sfx_preset').")
                 out.append(item)
             return out
 
