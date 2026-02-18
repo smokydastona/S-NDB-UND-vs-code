@@ -17,6 +17,7 @@ from .controls import map_prompt_to_controls
 from .pro_presets import apply_pro_preset, pro_preset_keys
 from .polish_profiles import apply_polish_profile, polish_profile_keys
 from .fx_chains import apply_fx_chain, fx_chain_keys
+from .sfx_presets import apply_sfx_preset
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,7 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="diffusers",
         help="Generation engine (built-ins + optional plugins). Built-ins: diffusers, stable_audio_open, rfxgen, replicate, samplelib, synth, layered.",
     )
-    p.add_argument("--prompt", required=True, help="Text prompt describing the sound.")
+    p.add_argument(
+        "--prompt",
+        default=None,
+        help="Text prompt describing the sound. If omitted, you must pass --sfx-preset.",
+    )
     p.add_argument("--seconds", type=float, default=3.0, help="Duration in seconds.")
     p.add_argument("--seed", type=int, default=None, help="Random seed for repeatability.")
     p.add_argument(
@@ -289,6 +294,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--fx-chain-json",
         default=None,
         help="Load an FX chain JSON file. Supports either an args-patch JSON or an effect-list JSON.",
+    )
+
+    # Concrete SFX presets (v1): engine + prompt + defaults + FX chain.
+    p.add_argument(
+        "--sfx-preset",
+        default="off",
+        help=(
+            "Apply a concrete SFX preset from a preset library (engine + prompt + defaults). "
+            "Searches library/sfx_presets.json then configs/sfx_presets_v1.example.json. "
+            "Use --sfx-preset-file to load a specific JSON file."
+        ),
+    )
+    p.add_argument(
+        "--sfx-preset-file",
+        default=None,
+        help="Path to a JSON preset library file containing a 'presets' list.",
     )
     p.add_argument(
         "--map-controls",
@@ -558,13 +579,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--layered-xfade-transient-to-body-ms",
         type=float,
         default=0.0,
-        help="Layered: crossfade transient→body (ms). 0 disables (legacy add-layers).",
+        help="Layered: crossfade transient-to-body (ms). 0 disables (legacy add-layers).",
     )
     p.add_argument(
         "--layered-xfade-body-to-tail-ms",
         type=float,
         default=0.0,
-        help="Layered: crossfade body→tail (ms). 0 disables (legacy add-layers).",
+        help="Layered: crossfade body-to-tail (ms). 0 disables (legacy add-layers).",
     )
     p.add_argument(
         "--layered-xfade-curve",
@@ -680,6 +701,22 @@ def _slug_from_prompt(prompt: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Apply concrete SFX preset first so it can set engine/prompt/fx-chain,
+    # then let the FX chain patch remaining defaults, then pro presets.
+    try:
+        sfx_preset_obj, sfx_preset_lib = apply_sfx_preset(
+            preset_key=str(getattr(args, "sfx_preset", "off")),
+            preset_file=getattr(args, "sfx_preset_file", None),
+            args=args,
+            parser=parser,
+        )
+    except ValueError as e:
+        parser.error(str(e))
+        raise
+
+    if not getattr(args, "prompt", None):
+        parser.error("Either --prompt or --sfx-preset is required.")
 
     # Apply FX chain first so later presets only fill remaining defaults,
     # and explicit user flags are never clobbered.
@@ -927,6 +964,10 @@ def main(argv: list[str] | None = None) -> int:
             "sound_path": str(sound_path),
             **{k: v for k, v in generated.credits_extra.items() if v is not None},
         }
+        if sfx_preset_obj is not None:
+            data["sfx_preset"] = str(sfx_preset_obj.name)
+        if sfx_preset_lib is not None:
+            data["sfx_preset_library"] = str(sfx_preset_lib)
         data["pro_preset"] = str(getattr(args, "pro_preset", "off"))
         data["polish_profile"] = str(getattr(args, "polish_profile", "off"))
         data["loop_clean"] = bool(getattr(args, "loop", False))

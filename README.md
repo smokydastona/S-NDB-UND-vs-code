@@ -195,6 +195,22 @@ python -m soundgen.benchmark --suite creature --engines layered stable_audio_ope
 	python -m soundgen.generate --prompt "laser zap" --seconds 2.5 --out outputs\laser.wav
 ```
 
+### SFX presets (v1 preset library)
+
+This repo supports **concrete SFX presets** (engine + prompt + defaults + FX chain) via `--sfx-preset`.
+
+```powershell
+# Uses library/sfx_presets.json if present, otherwise configs/sfx_presets_v1.example.json
+python -m soundgen.generate --sfx-preset creature_medium_roar --out outputs\roar.wav
+
+# Load a specific preset JSON file
+python -m soundgen.generate --sfx-preset creature_medium_roar --sfx-preset-file configs\sfx_presets_v1.example.json --out outputs\roar.wav
+```
+
+Notes:
+- `--sfx-preset` is separate from `--preset` (which is **rfxgen-only**).
+- Presets apply conservatively (they only fill values still at argparse defaults), so you can still override knobs.
+
 ### Best-of-N candidate selection
 
 For engines that have randomness (AI/sample selection/etc), you can generate multiple candidates and automatically pick the best using QA metrics.
