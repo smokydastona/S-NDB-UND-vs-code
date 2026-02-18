@@ -124,6 +124,31 @@ v3 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: project create/build/export commands
   - **Done gate**: hybrid engine CLI + pack normalize command
 
+---
+
+# v4 — Ecosystem & expansion (Spec)
+
+- Status: **Later (optional)** (productization + distribution)
+
+## v4 Completion Checklist (Spec)
+
+v4 is considered **complete** when every section below is **Done** end-to-end (code + docs + packaging + safe upgrade path).
+
+- **v4.1 Plugin ecosystem** — **Later (optional)**
+  - **Done gate**: stable plugin packaging + discovery conventions (local folder + Python entry points)
+  - **Done gate**: safe failure modes (versioning, compatibility checks, license gates)
+  - **Done gate**: documentation for authors + examples (engine + preset pack + FX module)
+
+- **v4.2 Game engine integrations (Unity/Unreal/Godot)** — **Later (optional)**
+  - **Done gate**: Unity export profile (WAV/OGG + import hints / templates)
+  - **Done gate**: Unreal export profile (WAV + cue/MetaSound-friendly metadata)
+  - **Done gate**: Godot export profile (WAV/OGG + import hints)
+
+- **v4.3 Cloud mode / inference server** — **Later (optional)**
+  - **Done gate**: headless server mode (generate/post/export) with auth + rate limiting
+  - **Done gate**: reproducibility (credits capture + deterministic seeds where supported)
+  - **Done gate**: deployment docs (local + basic cloud)
+
 ## Phase 1 — Core foundations (toward 1.0)
 
 - **1.1 Multi‑engine architecture** — **Done**
@@ -239,9 +264,7 @@ v3 is considered **complete** when every section below is **Done** end-to-end (c
 
 ## Phase 4 — Ecosystem & expansion (3.0 → 4.0)
 
-- **4.1 Plugin ecosystem** — **Later** (depends on 2.3 plugin discovery)
-- **4.2 Game engine integrations (Unity/Unreal/Godot)** — **Later**
-- **4.3 Cloud mode / inference server** — **Later**
+See **v4 — Ecosystem & expansion (Spec)** above for the canonical v4 checklist.
 
 ## Phase 5 — Best-in-world milestones
 
