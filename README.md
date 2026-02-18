@@ -1,8 +1,11 @@
-# S-NDB-UND (Prompt → SFX WAV)
+# S-NDB-UND — game-audio sound generator (Prompt → SFX WAV)
 
 [![Build EXE](https://github.com/smokydastona/S-NDB-UND/actions/workflows/build-exe.yml/badge.svg)](https://github.com/smokydastona/S-NDB-UND/actions/workflows/build-exe.yml)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-TBD-lightgrey)
 
-Generate short sound effects from a text prompt — with modder-ready export.
+S-NDB-UND is an **open-source game-audio sound generator** for game developers, modders, and sound designers.
+It combines **AI prompt-to-audio**, **procedural / DSP engines**, and **post-processing + FX chains** to produce **game-ready SFX, ambience, and creature sounds** — with a CLI-first workflow and Minecraft-ready export.
 
 App name: **S-NDB-UND** (Python module name: `soundgen`).
 
@@ -15,6 +18,60 @@ App name: **S-NDB-UND** (Python module name: `soundgen`).
 	- Batch manifests (JSON/CSV): per-item overrides for presets/pro controls + Stable Audio settings.
 	- Doc → prompt: drop docs in `pre_gen_sound/` and generate whole sound families.
 - **Pro presets + named polish profiles**: “one-click paid tool defaults” that apply conservatively.
+
+## Core features
+
+- **Multi-engine architecture**: AI + procedural/DSP + hybrid layering.
+- **Deterministic seeds**: repeatable results for iteration and versioning.
+- **QA + best-of-N**: generate multiple candidates and pick the best via metrics.
+- **Post-processing + FX chains**: trimming/fades/normalization + configurable FX.
+- **Batch generation**: JSON/CSV manifests for large mod packs.
+- **Minecraft integration**: `.ogg` + `sounds.json` + optional subtitles + pack credits.
+- **Multiple front-ends**: CLI, Gradio web UI, and a desktop wrapper.
+
+## Who is this for?
+
+- Game developers who need lots of small, consistent SFX.
+- Minecraft modders building sound packs and mob soundsets.
+- Sound designers prototyping ideas quickly (and iterating deterministically).
+- Tool/dev contributors who want an extensible engine + export pipeline.
+
+## Why S-NDB-UND?
+
+- **Designed for game audio**, not “make a song.”
+- **Built-in post / polish** so results land closer to “drop-in usable.”
+- **Batch + reproducibility** for real mod workflows.
+- **Minecraft export is first-class**, not a bolted-on script.
+- **Open and extensible**: engines and behaviors are meant to be added.
+
+## Use cases (real commands)
+
+Generate a best-of-12 creature roar (one output WAV chosen by QA):
+
+```powershell
+python -m soundgen.generate --engine stable_audio_open --prompt "a huge creature roar, gritty, game sfx" --seconds 2.0 --seed 123 --candidates 12 --post --out outputs\roar_best.wav
+```
+
+Generate 12 variations as separate WAV files (seed sweep):
+
+```powershell
+1..12 | ForEach-Object {
+	$s = 1000 + $_
+	python -m soundgen.generate --engine diffusers --prompt "coin pickup, bright, short, game sfx" --seconds 1.0 --seed $s --post --out ("outputs\\coin_{0:00}.wav" -f $_)
+}
+```
+
+Batch-generate a whole pack from a manifest and export as a zip:
+
+```powershell
+python -m soundgen.batch --manifest example_manifest.json --zip outputs\resourcepack.zip
+```
+
+Minecraft export (writes `.ogg` + `sounds.json` + optional subtitles):
+
+```powershell
+python -m soundgen.generate --engine rfxgen --minecraft --namespace mymod --event ui.coin --subtitle "Coin" --prompt "coin pickup" --post
+```
 
 ## Quickstart
 
@@ -41,6 +98,8 @@ This repo intentionally does not commit generated audio or packs. Screenshots/GI
 
 - Web UI: `python -m soundgen.web`
 - Desktop UI: `python -m soundgen.desktop`
+
+Terminal output / run logs are also welcome — anything that makes the project feel “alive.”
 
 ## Web UI (Control Panel)
 
@@ -166,13 +225,30 @@ Notes:
 
 ## Roadmap
 
-- More preset packs (UI/UI+gameplay/creature families) and community-contributed templates
-- Fine-tuning workflow (optional): dataset format + training script + inference loading
-- Plugin-style engine registry additions (third-party engines without core changes)
+This repo is actively evolving toward a “one-stop shop” workflow for game audio.
+
+Near-term themes:
+
+- Expand preset libraries and community-contributed templates
+- Keep polishing chains and FX chains ergonomic and reproducible
+- Broaden pack generators (Minecraft-first, but not Minecraft-only)
+- Keep UI + CLI behavior aligned (CLI remains the source of truth)
 
 See the full status + milestones in [docs/roadmap.md](docs/roadmap.md).
 - Windows training notes for creature-family LoRAs: [docs/creature_family_training_windows.md](docs/creature_family_training_windows.md)
 - Some features still require external tools (e.g. `ffmpeg` on PATH for MP3/OGG export).
+
+## Contributing
+
+- Fork the repo and create a feature branch.
+- Keep changes small and focused; add docs/examples when behavior changes.
+- Before opening a PR, run:
+	- `python -m compileall -q src/soundgen`
+	- `python -m soundgen.doctor`
+
+## License
+
+License is **TBD** (no LICENSE file yet). If you want this to be broadly reusable, pick a license (MIT / Apache-2.0 are common) and add `LICENSE` — then the badge above can switch from `TBD` to the real license automatically.
 
 ## One-stop shop (v1) vision
 
