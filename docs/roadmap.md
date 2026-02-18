@@ -31,13 +31,12 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
   - Command: `S‑NDB‑UND.exe mobset …` / `python -m soundgen.app mobset …`
   - Generates hurt/death/ambient/step, variants, updates `sounds.json`, optional snippet
 
-- **2.2 Preset library v1 (content pack)** — **Next**
-  - The *system* exists; what’s missing is shipping a curated preset pack (20+ entries) with names, descriptions, and “when to use” guidance.
+- **2.2 Preset library v1 (content pack)** — **Done (demo pack)**
+  - Curated demo pack exists: `soundpack_v1/` (WAV + Minecraft-ready OGG + credits).
 
-- **2.3 Engine registry (plugin discovery)** — **In repo (basic), Next (plugins)**
-  - Registry exists as a dispatcher, but not yet a true plugin folder / entry-points discovery mechanism.
-  - Next step: define a plugin API and load engines from `soundgen_plugins/` or Python entry points.
-  - Update: plugin discovery is now implemented; see `docs/plugins.md`.
+- **2.3 Engine registry (plugin discovery)** — **Done**
+  - Engine plugin discovery supports `./soundgen_plugins/` + Python entry points.
+  - Docs: `docs/plugins.md`.
 
 - **2.4 Unified metadata system** — **Done**
   - Sidecar credits JSON + pack credits JSON; includes timestamps and reproducibility fields.
@@ -60,6 +59,13 @@ Legend: **Done** / **In repo (basic)** / **Next** / **Later**
 - **3.4 Looping + ambience tools** — **In repo (basic), Next (loop suite)**
   - Loop-clean + crossfade exists.
   - Next: “loop suite” commands (auto-loop points, tail trimming heuristics, noise bed helpers).
+
+- **3.5 Editor-grade DSP + analysis (Audacity/Ardour inspired)** — **Next**
+  - **Export analysis report**: compute and record peak / true-peak (approx) / loudness proxy + normalization factor for each render (and per-candidate for best-of-N).
+  - **Fade/crossfade curves**: add selectable curve shapes (equal-power, exponential-ish) for loop-clean and layered crossfades.
+  - **Envelope follower library**: unify attack/release coefficient math and follower modes (peak vs RMS-ish) for compressor/transient tools.
+  - **Ducking / sidechain-style polish**: optional post step that ducks “bed/tail” under transients (offline analogue of sidechain compression).
+  - **Effect stack abstraction (offline)**: formalize the post chain as a configurable stack so batch/manifests can reorder/toggle blocks without new code paths.
 
 ## Phase 4 — Ecosystem & expansion (3.0 → 4.0)
 
