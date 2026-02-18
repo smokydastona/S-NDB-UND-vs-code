@@ -31,6 +31,7 @@ def _print_help() -> None:
         "Usage:\n"
         "  S-NDB-UND.exe                  (opens the desktop UI)\n"
         "  S-NDB-UND.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
+        "  S-NDB-UND.exe finetune <args>  (Fine-tuning helpers: train wrapper + validation preview)\n"
         "  S-NDB-UND.exe web <args>       (Gradio UI in your browser)\n"
         "  S-NDB-UND.exe desktop <args>   (UI in an embedded desktop window)\n"
         "  S-NDB-UND.exe project <args>   (Project system: track versions + export packs)\n"
@@ -41,6 +42,7 @@ def _print_help() -> None:
         "  S-NDB-UND.exe mobset --help\n"
         "  S-NDB-UND.exe project --help\n"
         "  S-NDB-UND.exe generate --help\n"
+        "  S-NDB-UND.exe finetune --help\n"
         "  S-NDB-UND.exe edit --help\n"
         "  S-NDB-UND.exe loop --help\n"
     )
@@ -66,6 +68,12 @@ def main(argv: list[str] | None = None) -> int:
         from .generate import main as generate_main
 
         return int(generate_main(rest))
+
+    if cmd == "finetune":
+        from .finetune import main as finetune_main
+
+        finetune_main(rest)
+        return 0
 
     if cmd == "web":
         _hide_console_window_windows()

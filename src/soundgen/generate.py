@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import tempfile
 from pathlib import Path
+import sys
 
 import numpy as np
 from scipy.signal import resample_poly
@@ -22,6 +23,16 @@ from .sfx_presets import apply_sfx_preset, render_sfx_prompt_from_args
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # Windows consoles can default to cp1252; our help text and docs may contain
+    # unicode punctuation. Ensure --help doesn't crash.
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     p = argparse.ArgumentParser(description="Generate a sound effect WAV from a text prompt.")
     p.add_argument(
         "--engine",
@@ -92,6 +103,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # Creature-family fine-tuning (LoRA) for Stable Audio Open (inference-time loading).
+    p.add_argument(
+        "--model-version",
+        default=None,
+        help=(
+            "Optional model version key. Loads from configs/model_versions.json or library/model_versions.json and "
+            "applies its LoRA settings to engine=stable_audio_open (and to engine=hybrid when hybrid base is stable_audio_open)."
+        ),
+    )
     p.add_argument(
         "--creature-family",
         default=None,
@@ -1097,18 +1116,50 @@ def main(argv: list[str] | None = None) -> int:
         stable_audio_lora_scale: float = float(args.stable_audio_lora_scale) if args.stable_audio_lora_scale is not None else 1.0
         stable_audio_lora_trigger = args.stable_audio_lora_trigger
 
+        # Model versions: named references to fine-tuned LoRAs (optional).
+        mv = None
+        if getattr(args, "model_version", None):
+            from .model_versions import resolve_model_version
+
+            mv = resolve_model_version(str(args.model_version))
+            if str(mv.engine).strip().lower() != "stable_audio_open":
+                raise ValueError(
+                    f"Model version '{mv.key}' engine={mv.engine!r} is not supported. "
+                    "Only stable_audio_open is supported currently."
+                )
+
+            # Only apply if the user hasn't explicitly set overrides.
+            if stable_audio_lora_path is None and mv.lora_path:
+                stable_audio_lora_path = str(mv.lora_path)
+            if args.stable_audio_lora_scale is None:
+                stable_audio_lora_scale = float(mv.scale)
+            if stable_audio_lora_trigger is None and mv.trigger:
+                stable_audio_lora_trigger = str(mv.trigger)
+
+            # Optional negative prompt injection (only if none provided).
+            if args.engine == "stable_audio_open" and mv.negative_prompt and not args.stable_audio_negative_prompt:
+                args.stable_audio_negative_prompt = str(mv.negative_prompt)
+
         if args.creature_family:
             from .creature_families import apply_trigger, resolve_creature_family
 
             fam = resolve_creature_family(str(args.creature_family))
             # Only apply to stable_audio_open (for now). We still allow other engines to run unchanged.
+            # Creature-family defaults are lower precedence than an explicitly selected model version.
             stable_audio_lora_path = stable_audio_lora_path or fam.lora_path
-            if args.stable_audio_lora_scale is None:
+            if args.stable_audio_lora_scale is None and mv is None:
                 stable_audio_lora_scale = float(fam.scale)
             stable_audio_lora_trigger = stable_audio_lora_trigger or fam.trigger
             if args.engine == "stable_audio_open" and fam.negative_prompt and not args.stable_audio_negative_prompt:
                 args.stable_audio_negative_prompt = fam.negative_prompt
             if args.engine == "stable_audio_open" and stable_audio_lora_trigger:
+                prompt2 = apply_trigger(prompt2, stable_audio_lora_trigger)
+
+        # For hybrid, apply LoRA trigger injection if base is stable_audio_open.
+        if args.engine == "hybrid" and str(getattr(args, "hybrid_base_engine", "stable_audio_open")).strip().lower() == "stable_audio_open":
+            if stable_audio_lora_trigger:
+                from .creature_families import apply_trigger
+
                 prompt2 = apply_trigger(prompt2, stable_audio_lora_trigger)
 
         return generate_wav(

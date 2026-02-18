@@ -60,7 +60,7 @@ v2 is considered **complete** when every section below is **Done** end-to-end (c
   - **Done gate**: AI base + procedural transient/noise texture layers + automix
   - **Done gate**: apply FX chain to final composite + credits capture
 
-- **v2.6 Fine‑Tuning Support (Optional)** — **Next**
+- **v2.6 Fine‑Tuning Support (Optional)** — **Done**
   - **Done gate**: training script + validation preview + model versioning
   - **Done gate**: preset linking to fine-tuned models
 

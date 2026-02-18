@@ -1,0 +1,11 @@
+{
+  "example_ghoul_v1": {
+    "engine": "stable_audio_open",
+    "base_model": "stabilityai/stable-audio-open-1.0",
+    "lora_path": "lora/ghoul_v1.safetensors",
+    "trigger": "ghoul",
+    "scale": 0.8,
+    "negative_prompt": "music, singing, speech",
+    "notes": "Example entry. Copy to configs/model_versions.json and update paths."
+  }
+}

@@ -153,6 +153,23 @@ Create `configs/creature_families.json` (or use `library/creature_families.json`
 python -m soundgen.generate --engine stable_audio_open --creature-family ghoul --prompt "creature screech" --seconds 1.6 --seed 123 --post --out outputs\ghoul_screech.wav
 ```
 
+## 6) Optional: model versions + validation preview
+
+If you want stable, named references to fine-tuned models (instead of remembering file paths), add a model versions file:
+
+- `configs/model_versions.json` (project config; commit-friendly)
+- or `library/model_versions.json` (local override)
+
+Example starter: `configs/model_versions.example.json`.
+
+Then you can validate a model version by generating a small preview set:
+
+```powershell
+python -m soundgen.finetune validate --model-version example_ghoul_v1 --prompt "creature screech" --seconds 1.6 --variants 6 --seed 123 --out outputs\validate_ghoul --post
+```
+
+This writes a small set of WAVs (plus a minimal Minecraft pack stub) into the output folder.
+
 ## 5) Practical tips for creature families
 
 - Start with ~50–200 clean examples per family.

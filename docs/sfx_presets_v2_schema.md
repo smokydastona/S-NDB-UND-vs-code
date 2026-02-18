@@ -22,12 +22,24 @@ A family is a reusable base block.
 
 Supported keys (all optional, but effective presets must end up with `engine` + `prompt`):
 
-- `engine`: e.g. `stable_audio_open`, `diffusers`, `rfxgen`, `samplelib`, `layered`
+- `engine`: e.g. `stable_audio_open`, `diffusers`, `rfxgen`, `samplelib`, `layered`, `hybrid`
 - `prompt`: a template string using `{var}` placeholders
 - `vars`: object mapping variable name → either a scalar or a list of options
 - `negative_prompt`, `seconds`, `seed`, `variation_strength`, `fx_chain`, `post`
 - `engine_params`: object (argparse dest → value)
 - `post_params`: object (argparse dest → value)
+
+### Fine-tuned model linking
+
+You can link a preset to a fine-tuned model (LoRA) by setting either:
+
+- `engine_params.model_version`: a key from `configs/model_versions.json` or `library/model_versions.json`.
+- OR the low-level Stable Audio Open LoRA args:
+  - `engine_params.stable_audio_lora_path`
+  - `engine_params.stable_audio_lora_scale`
+  - `engine_params.stable_audio_lora_trigger`
+
+If you use `model_version`, it fills those Stable Audio Open LoRA fields unless you explicitly override them.
 
 ## Preset definition
 
