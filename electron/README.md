@@ -62,6 +62,18 @@ To disable update checks:
 $env:SOUNDGEN_AUTO_UPDATE = "0"
 ```
 
+## Crash dumps / crash reporting
+
+Packaged builds write Windows crash dumps under the Electron user data folder:
+
+- `%APPDATA%\\SÖNDBÖUND\\crashdumps`
+
+Optional: if you have a crash upload endpoint (Crashpad-compatible), set:
+
+```powershell
+$env:SOUNDGEN_CRASH_SUBMIT_URL = "https://your-crash-endpoint.example/upload"
+```
+
 ## Build a self-contained installer (no Python required)
 
 This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.

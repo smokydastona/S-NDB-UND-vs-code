@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog, crashReporter } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -33,6 +33,38 @@ function logLine(line) {
     backendLogStream.write(String(line || '') + (String(line || '').endsWith('\n') ? '' : '\n'));
   } catch {
     // Best-effort only.
+  }
+}
+
+function setupCrashDumpsAndReporting() {
+  try {
+    // Ensure crash dumps land somewhere the user can find.
+    const dumpDir = path.join(app.getPath('userData'), 'crashdumps');
+    fs.mkdirSync(dumpDir, { recursive: true });
+    app.setPath('crashDumps', dumpDir);
+
+    // Optional: upload crash reports to a server (requires your endpoint).
+    // If not set, Electron will still write crash dumps locally.
+    const submitURL = String(process.env.SOUNDGEN_CRASH_SUBMIT_URL || '').trim();
+    if (submitURL) {
+      crashReporter.start({
+        companyName: 'SÖNDBÖUND',
+        productName: 'SÖNDBÖUND',
+        submitURL,
+        uploadToServer: true,
+        compress: true,
+        extra: {
+          appVersion: String(app.getVersion()),
+          platform: String(process.platform),
+          arch: String(process.arch)
+        }
+      });
+      logLine('[crash] crashReporter enabled (uploadToServer=true)');
+    } else {
+      logLine('[crash] crashReporter not configured; local dumps only');
+    }
+  } catch (e) {
+    logLine('[crash] setup failed: ' + (e && e.stack ? e.stack : e));
   }
 }
 
@@ -590,6 +622,7 @@ process.on('uncaughtException', (err) => {
 });
 
 app.whenReady().then(() => {
+  setupCrashDumpsAndReporting();
   setupAutoUpdate()
     .catch((e) => logLine('[updater] setup failed: ' + (e && e.stack ? e.stack : e)))
     .finally(() => {
