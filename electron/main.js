@@ -9,6 +9,10 @@ let isQuitting = false;
 let backendLogStream = null;
 let backendRestartTimer = null;
 
+let autoUpdaterApi = null;
+let didSetupAutoUpdate = false;
+let manualUpdateCheckInFlight = false;
+
 function normalizeStreamingText(chunk) {
   // Progress bars often use CR without LF.
   return String(chunk || '').replace(/\r/g, '\n');
@@ -29,6 +33,151 @@ function logLine(line) {
     backendLogStream.write(String(line || '') + (String(line || '').endsWith('\n') ? '' : '\n'));
   } catch {
     // Best-effort only.
+  }
+}
+
+function isAutoUpdateEnabled() {
+  // Auto-update relies on publish metadata + GitHub releases, and is intended for packaged builds.
+  if (!app.isPackaged) return false;
+  const raw = String(process.env.SOUNDGEN_AUTO_UPDATE || '').trim().toLowerCase();
+  if (!raw) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return true;
+}
+
+async function setupAutoUpdate() {
+  if (didSetupAutoUpdate) return;
+  didSetupAutoUpdate = true;
+
+  if (!isAutoUpdateEnabled()) return;
+
+  try {
+    // Lazy import so dev runs don't care about updater plumbing.
+    // (It is still installed in packaged builds.)
+    // eslint-disable-next-line global-require
+    const { autoUpdater } = require('electron-updater');
+    autoUpdaterApi = autoUpdater;
+  } catch (e) {
+    logLine('[updater] electron-updater not available: ' + (e && e.stack ? e.stack : e));
+    return;
+  }
+
+  try {
+    autoUpdaterApi.logger = {
+      info: (m) => logLine('[updater] ' + String(m)),
+      warn: (m) => logLine('[updater] ' + String(m)),
+      error: (m) => logLine('[updater] ' + String(m)),
+      debug: (m) => logLine('[updater] ' + String(m))
+    };
+  } catch {
+    // best-effort
+  }
+
+  autoUpdaterApi.autoDownload = true;
+  autoUpdaterApi.autoInstallOnAppQuit = true;
+
+  autoUpdaterApi.on('error', async (err) => {
+    const msg = err && err.message ? err.message : String(err);
+    logLine('[updater] error: ' + msg);
+    if (manualUpdateCheckInFlight) {
+      manualUpdateCheckInFlight = false;
+      try {
+        await dialog.showMessageBox({
+          type: 'error',
+          buttons: ['OK'],
+          title: 'Update check failed',
+          message: 'Could not check for updates.',
+          detail: msg
+        });
+      } catch {}
+    }
+  });
+
+  autoUpdaterApi.on('update-available', (info) => {
+    logLine('[updater] update available: ' + JSON.stringify({ version: info && info.version, files: info && info.files && info.files.length }));
+  });
+
+  autoUpdaterApi.on('update-not-available', async () => {
+    logLine('[updater] no update available');
+    if (manualUpdateCheckInFlight) {
+      manualUpdateCheckInFlight = false;
+      try {
+        await dialog.showMessageBox({
+          type: 'info',
+          buttons: ['OK'],
+          title: 'No updates',
+          message: 'You are up to date.'
+        });
+      } catch {}
+    }
+  });
+
+  autoUpdaterApi.on('download-progress', (p) => {
+    // Keep logs small but helpful.
+    const percent = p && typeof p.percent === 'number' ? Math.round(p.percent) : null;
+    if (percent !== null) logLine('[updater] download ' + percent + '%');
+  });
+
+  autoUpdaterApi.on('update-downloaded', async () => {
+    logLine('[updater] update downloaded');
+    try {
+      const choice = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Update ready',
+        message: 'An update was downloaded.',
+        detail: 'Restart SÖNDBÖUND to install it.'
+      });
+      if (choice.response === 0) {
+        try {
+          autoUpdaterApi.quitAndInstall();
+        } catch (e) {
+          logLine('[updater] quitAndInstall failed: ' + (e && e.stack ? e.stack : e));
+        }
+      }
+    } catch {
+      // best-effort
+    }
+  });
+
+  // Kick off a background update check.
+  try {
+    await autoUpdaterApi.checkForUpdates();
+  } catch (e) {
+    logLine('[updater] initial check failed: ' + (e && e.stack ? e.stack : e));
+  }
+}
+
+async function checkForUpdatesInteractive() {
+  if (!autoUpdaterApi) {
+    try {
+      await dialog.showMessageBox({
+        type: 'info',
+        buttons: ['OK'],
+        title: 'Updates unavailable',
+        message: 'Auto-update is not enabled for this build.'
+      });
+    } catch {}
+    return;
+  }
+
+  manualUpdateCheckInFlight = true;
+  try {
+    await autoUpdaterApi.checkForUpdates();
+  } catch (e) {
+    manualUpdateCheckInFlight = false;
+    const msg = e && e.message ? e.message : String(e);
+    try {
+      await dialog.showMessageBox({
+        type: 'error',
+        buttons: ['OK'],
+        title: 'Update check failed',
+        message: 'Could not check for updates.',
+        detail: msg
+      });
+    } catch {}
   }
 }
 
@@ -363,12 +512,22 @@ function scheduleBackendRestart() {
 }
 
 function createMenu() {
+  const updateItem = isAutoUpdateEnabled()
+    ? [{
+        label: 'Check for Updates…',
+        click: () => {
+          checkForUpdatesInteractive().catch((e) => logLine('[updater] interactive check failed: ' + (e && e.stack ? e.stack : e)));
+        }
+      }]
+    : [];
+
   const template = [
     {
       label: 'App',
       submenu: [
         { role: 'reload' },
         { role: 'toggledevtools' },
+        ...updateItem,
         { type: 'separator' },
         { role: 'quit' }
       ]
@@ -431,10 +590,14 @@ process.on('uncaughtException', (err) => {
 });
 
 app.whenReady().then(() => {
-  createWindow().catch((e) => {
+  setupAutoUpdate()
+    .catch((e) => logLine('[updater] setup failed: ' + (e && e.stack ? e.stack : e)))
+    .finally(() => {
+      createWindow().catch((e) => {
     // If backend failed, show a basic error page.
     const msg = String(e && e.message ? e.message : e);
     mainWindow = new BrowserWindow({ width: 900, height: 600, title: 'SÖNDBÖUND (error)' });
     mainWindow.loadURL('data:text/plain;charset=utf-8,' + encodeURIComponent('Failed to start backend.\n\n' + msg));
-  });
+      });
+    });
 });

@@ -52,6 +52,16 @@ You can disable the prompt (for CI or debugging) by setting:
 $env:SOUNDGEN_SKIP_MODEL_CHECK = "1"
 ```
 
+## Auto-update (packaged builds)
+
+When running as a packaged app, SÖNDBÖUND can check GitHub Releases for updates (via `electron-updater`).
+
+To disable update checks:
+
+```powershell
+$env:SOUNDGEN_AUTO_UPDATE = "0"
+```
+
 ## Build a self-contained installer (no Python required)
 
 This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.
