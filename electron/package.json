@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "description": "Electron shell for SÖNDBÖUND (Python/Gradio backend)",
+  "author": "SmokyDaStona",
   "repository": {
     "type": "git",
     "url": "https://github.com/smokydastona/S-NDB-UND.git"
