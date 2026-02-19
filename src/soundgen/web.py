@@ -2072,10 +2072,6 @@ def build_demo_legacy() -> gr.Blocks:
     return demo
 
 
-# Keep the previous, accordion-heavy UI available for reference/debugging.
-build_demo_legacy = build_demo
-
-
 def build_demo() -> gr.Blocks:
     from .web_control_panel import build_demo_control_panel
     if str(os.environ.get("SOUNDGEN_WEB_UI", "")).strip().lower() == "legacy":
