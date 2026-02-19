@@ -26,6 +26,7 @@ from .controls import map_prompt_to_controls
 from .pro_presets import PRO_PRESETS, get_pro_preset, pro_preset_keys, pro_preset_recommended_profile
 from .polish_profiles import POLISH_PROFILES, polish_profile_keys
 from .fx_chains import FX_CHAINS, fx_chain_keys, load_fx_chain_json
+from .runtime_config import user_configs_dir
 
 
 def _ui_icon_data_uri() -> str | None:
@@ -313,7 +314,7 @@ def _ui_fx_chain_save(chain_json: str, out_path: str) -> str:
     desc = (str(obj.get("description")).strip() if obj.get("description") is not None else None)
     chain = FxChainV2(name=name, steps=tuple(steps), description=desc)
 
-    out = Path(str(out_path or "").strip() or "configs/fx_chain_v2.web.json")
+    out = Path(str(out_path or "").strip() or str(user_configs_dir() / "fx_chain_v2.web.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dump_fx_chain_v2_json(chain), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return f"Saved: {out}"
@@ -2015,7 +2016,7 @@ def build_demo_legacy() -> gr.Blocks:
                 fx_load_btn.click(fn=_ui_fx_chain_load, inputs=[fx_chain_file], outputs=[fx_chain_json, fx_chain_status])
 
                 with gr.Row():
-                    fx_save_path = gr.Textbox(value="configs/fx_chain_v2.web.json", label="Save path")
+                    fx_save_path = gr.Textbox(value=str(user_configs_dir() / "fx_chain_v2.web.json"), label="Save path")
                     fx_save_btn = gr.Button("Save")
                 fx_save_btn.click(fn=_ui_fx_chain_save, inputs=[fx_chain_json, fx_save_path], outputs=[fx_chain_status])
 

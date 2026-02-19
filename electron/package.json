@@ -7,19 +7,22 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "prep-backend": "node scripts/prepare-backend.js",
+    "prep-assets": "node scripts/prepare-assets.js",
+    "prep-backend": "node scripts/prepare-assets.js && node scripts/prepare-backend.js",
     "pack": "npm run prep-backend && electron-builder --dir",
     "dist": "npm run prep-backend && electron-builder"
   },
   "devDependencies": {
     "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^2.1.8"
   },
   "build": {
     "appId": "com.smokydastona.sondbound",
     "productName": "SÖNDBÖUND",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "main.js",
@@ -32,9 +35,17 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
-      ]
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

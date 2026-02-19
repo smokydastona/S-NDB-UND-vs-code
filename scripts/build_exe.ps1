@@ -93,6 +93,15 @@ if (Test-Path $bgPng) {
   $commonArgs += @("--add-data", "$bgPng;.examples")
 }
 
+# Bundle built-in configs/presets and local library data.
+# These are read-only app resources; user edits should live under SOUNDGEN_DATA_DIR.
+if (Test-Path "configs") {
+  $commonArgs += @("--add-data", "configs;configs")
+}
+if (Test-Path "library") {
+  $commonArgs += @("--add-data", "library;library")
+}
+
 $commonCollect = @(
   "--collect-all", "soundgen",
   "--collect-all", "numpy",

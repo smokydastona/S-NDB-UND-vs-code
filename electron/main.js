@@ -1,10 +1,31 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 let backendProc = null;
 let mainWindow = null;
+let isQuitting = false;
+let backendLogStream = null;
+let backendRestartTimer = null;
+
+function getLogDir() {
+  const logDir = path.join(app.getPath('userData'), 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+function logLine(line) {
+  try {
+    if (!backendLogStream) {
+      const logPath = path.join(getLogDir(), 'electron-main.log');
+      backendLogStream = fs.createWriteStream(logPath, { flags: 'a' });
+    }
+    backendLogStream.write(String(line || '') + (String(line || '').endsWith('\n') ? '' : '\n'));
+  } catch {
+    // Best-effort only.
+  }
+}
 
 function resolveBundledBackendExe() {
   // When packaged by electron-builder, extraResources land under process.resourcesPath.
@@ -53,24 +74,28 @@ function startBackend() {
       throw new Error('Bundled backend EXE not found in resources. Did you run `npm run prep-backend` before building?');
     }
     cmd = bundled.exePath;
+    // PyInstaller EXE entrypoint: sndbund_entry.py -> soundgen.app:main
     args = ['serve', '--host', '127.0.0.1', '--port', '0', '--print-json'];
     cwd = path.dirname(cmd);
   } else {
     const resolved = resolveBackendCommand();
     cmd = resolved.cmd;
+    // `python -m soundgen.app serve` runs the Gradio server for the Electron shell.
     args = ['-m', 'soundgen.app', 'serve', '--host', '127.0.0.1', '--port', '0', '--print-json'];
     cwd = repoRoot;
   }
 
-  const logDir = path.join(app.getPath('userData'), 'logs');
-  fs.mkdirSync(logDir, { recursive: true });
-  const logPath = path.join(logDir, 'electron-backend.log');
+  const logPath = path.join(getLogDir(), 'electron-backend.log');
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+
+  // Ensure both Electron and Python agree on a single per-user writable directory.
+  const dataDir = app.getPath('userData');
 
   backendProc = spawn(cmd, args, {
     cwd,
     env: {
       ...process.env,
+      SOUNDGEN_DATA_DIR: dataDir,
       // Ensures the backend doesn't try to open a browser window.
       GRADIO_ANALYTICS_ENABLED: 'False'
     },
@@ -89,6 +114,10 @@ function startBackend() {
 
   backendProc.on('exit', (code) => {
     logStream.write(`\n[backend exited] code=${code}\n`);
+    if (!isQuitting) {
+      // If the backend dies, we try to restart it and reload.
+      scheduleBackendRestart();
+    }
   });
 
   return new Promise((resolve, reject) => {
@@ -141,6 +170,27 @@ function startBackend() {
   });
 }
 
+function scheduleBackendRestart() {
+  if (backendRestartTimer) return;
+  backendRestartTimer = setTimeout(async () => {
+    backendRestartTimer = null;
+    try {
+      logLine('[backend] restarting...');
+      const url = await startBackend();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        await mainWindow.loadURL(url);
+      }
+    } catch (e) {
+      logLine(`[backend] restart failed: ${e && e.stack ? e.stack : e}`);
+      // Give the user something actionable.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const msg = String(e && e.message ? e.message : e);
+        await mainWindow.loadURL('data:text/plain;charset=utf-8,' + encodeURIComponent('Failed to restart backend.\n\n' + msg));
+      }
+    }
+  }, 1500);
+}
+
 function createMenu() {
   const template = [
     {
@@ -180,6 +230,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   if (backendProc && !backendProc.killed) {
     try {
       backendProc.kill();
@@ -187,13 +238,31 @@ app.on('before-quit', () => {
   }
 });
 
+// Single-instance lock (Windows app behavior)
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+process.on('uncaughtException', (err) => {
+  logLine(`[uncaughtException] ${err && err.stack ? err.stack : err}`);
+  try {
+    dialog.showErrorBox('SÖNDBÖUND crashed', String(err && err.message ? err.message : err));
+  } catch {}
+});
+
 app.whenReady().then(() => {
   createWindow().catch((e) => {
     // If backend failed, show a basic error page.
     const msg = String(e && e.message ? e.message : e);
     mainWindow = new BrowserWindow({ width: 900, height: 600, title: 'SÖNDBÖUND (error)' });
-    mainWindow.loadURL(
-      'data:text/plain;charset=utf-8,' + encodeURIComponent('Failed to start backend.\n\n' + msg)
-    );
+    mainWindow.loadURL('data:text/plain;charset=utf-8,' + encodeURIComponent('Failed to start backend.\n\n' + msg));
   });
 });

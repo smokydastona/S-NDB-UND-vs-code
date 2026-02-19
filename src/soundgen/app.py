@@ -6,6 +6,8 @@ import traceback
 from pathlib import Path
 import sys
 
+from .runtime_config import configure_runtime
+
 
 def _launched_from_interactive_terminal() -> bool:
     try:
@@ -53,6 +55,7 @@ def _print_help() -> None:
         "  SÖNDBÖUND.exe                  (opens the desktop UI)\n"
         "  SÖNDBÖUND.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
         "  SÖNDBÖUND.exe finetune <args>  (Fine-tuning helpers: train wrapper + validation preview)\n"
+        "  SÖNDBÖUND.exe models <args>    (Model cache helpers: where/defaults/download)\n"
         "  SÖNDBÖUND.exe web <args>       (Gradio UI in your browser)\n"
         "  SÖNDBÖUND.exe desktop <args>   (UI in an embedded desktop window)\n"
         "  SÖNDBÖUND.exe serve <args>     (start local Gradio server; for Electron wrappers)\n"
@@ -153,6 +156,14 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     _write_startup_log(f"invoke argv={argv!r}")
+
+    # Ensure caches/logs/settings live under a stable per-user directory.
+    # Electron sets `SOUNDGEN_DATA_DIR` to its `app.getPath('userData')`.
+    try:
+        configure_runtime()
+    except Exception:
+        # Never prevent startup; the app can still run in read-only mode.
+        pass
     # Default: desktop UI.
     if not argv:
         return _run_gui_mode(
@@ -178,6 +189,11 @@ def main(argv: list[str] | None = None) -> int:
 
         finetune_main(rest)
         return 0
+
+    if cmd == "models":
+        from .models import run_models
+
+        return int(run_models(rest))
 
     if cmd == "web":
         return _run_gui_mode(

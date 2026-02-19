@@ -43,6 +43,14 @@ Backend logs are written under the Electron user data folder (see `electron-back
 
 This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.
 
+### One-command build (recommended)
+
+From repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_windows_app.ps1 -Clean
+```
+
 1) Build the backend EXE (from repo root):
 
 ```powershell
@@ -58,3 +66,17 @@ npm run dist
 ```
 
 The output will be in `electron/dist/`.
+
+## Code signing (optional but strongly recommended)
+
+Unsigned installers often trigger Windows SmartScreen warnings.
+
+Electron Builder supports signing via environment variables:
+
+```powershell
+$env:CSC_LINK = "C:\path\to\certificate.p12"  # or a base64 data URI
+$env:CSC_KEY_PASSWORD = "your-password"
+npm run dist
+```
+
+If you don’t have a certificate yet, you can still build unsigned for local testing.
