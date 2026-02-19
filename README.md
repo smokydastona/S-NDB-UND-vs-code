@@ -267,7 +267,7 @@ python -m soundgen.doctor --check-stable-audio
 - **rfxgen engine fails**: download `rfxgen.exe` with [scripts/get_rfxgen.ps1](scripts/get_rfxgen.ps1) or pass `--rfxgen-path tools/rfxgen/rfxgen.exe`.
 - **CUDA issues / torch mismatch**: start with `--device cpu`. If you want GPU, install a torch build that matches your CUDA drivers.
 - **Python install problems**: if dependency installs fail on very new Python versions, try Python 3.12 (the GitHub Actions EXE build uses 3.12).
-- **Windows EXE opens nothing** (Desktop UI): this usually means `pywebview` or the Microsoft Edge **WebView2 Runtime** is missing. Try `SÖNDBÖUND.exe web` to open in your browser, or check the startup log at `%LOCALAPPDATA%\SÖNDBÖUND\startup.log`.
+- **Windows EXE desktop window fails/crashes**: the embedded Desktop UI uses `pywebview` (and on Windows may depend on pythonnet/.NET + WebView2). If it can’t start, double-clicking the EXE will fall back to the browser UI; you can also run `SÖNDBÖUND.exe web`. Check `%LOCALAPPDATA%\SÖNDBÖUND\startup.log` and `%LOCALAPPDATA%\SÖNDBÖUND\desktop.log`.
 - **Windows SmartScreen blocks the EXE**: click **More info** → **Run anyway**. If you downloaded a ZIP, right-click it → **Properties** → **Unblock** (then re-extract), or run `Unblock-File .\SÖNDBÖUND-*-windows.zip` in PowerShell before extracting.
 
 ## Windows .exe builds (optional)
@@ -280,7 +280,7 @@ This repo can build Windows executables via GitHub Actions.
 
 Usage:
 
-- Double-click `SÖNDBÖUND.exe` to open the desktop UI window.
+- Double-click `SÖNDBÖUND.exe` to open the UI (desktop window if available, otherwise your browser).
 - Run in a terminal for CLI generation:
 	- `SÖNDBÖUND.exe generate --engine rfxgen --prompt "coin pickup" --post --out outputs\\test.wav`
 

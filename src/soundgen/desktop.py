@@ -110,7 +110,13 @@ def run_desktop(argv: list[str] | None = None) -> int:
     # pythonnet/.NET. Packaged builds can break if the runtime/DLLs are mismatched.
     # Prefer Edge Chromium (WebView2) first, then fall back to mshtml.
     preferred_gui = str(os.environ.get("SOUNDGEN_DESKTOP_GUI", "")).strip().lower() or None
-    gui_candidates = [preferred_gui, "edgechromium", "mshtml", None]
+    raw_candidates: list[str | None] = [preferred_gui, "edgechromium", "mshtml", None]
+    gui_candidates: list[str | None] = []
+    for gui in raw_candidates:
+        if gui in {"", "none"}:
+            gui = None
+        if gui not in gui_candidates:
+            gui_candidates.append(gui)
     last_error: Exception | None = None
 
     hide_on_ready = str(os.environ.get("SOUNDGEN_HIDE_CONSOLE_ON_READY", "")).strip() == "1"
@@ -118,8 +124,6 @@ def run_desktop(argv: list[str] | None = None) -> int:
         _write_desktop_log("console_hide=on_ready")
 
     for gui in gui_candidates:
-        if gui in {"", "none"}:
-            gui = None
         try:
             _write_desktop_log(f"webview_start gui={gui!r} url={local_url}")
 

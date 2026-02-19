@@ -52,7 +52,7 @@ def _print_help() -> None:
     print(
         "SÖNDBÖUND (single app)\n\n"
         "Usage:\n"
-        "  SÖNDBÖUND.exe                  (opens the desktop UI)\n"
+        "  SÖNDBÖUND.exe                  (opens the UI; desktop window if available, else browser)\n"
         "  SÖNDBÖUND.exe generate <args>  (CLI generator; same flags as python -m soundgen.generate)\n"
         "  SÖNDBÖUND.exe finetune <args>  (Fine-tuning helpers: train wrapper + validation preview)\n"
         "  SÖNDBÖUND.exe models <args>    (Model cache helpers: where/defaults/download)\n"
@@ -106,8 +106,12 @@ def _show_error_dialog(title: str, message: str) -> None:
         return
 
 
-def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
-    """Run a GUI-ish mode safely (console may be hidden on Windows)."""
+def _run_gui_mode(fn, *, mode_name: str, argv: list[str], show_dialog: bool = True) -> int:
+    """Run a GUI-ish mode safely (console may be hidden on Windows).
+
+    If `show_dialog` is false, startup errors are logged but no blocking
+    MessageBox is shown. This is useful for "try desktop, then fallback".
+    """
 
     _write_startup_log(f"mode={mode_name} argv={argv!r}")
 
@@ -131,25 +135,30 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
     try:
         return int(fn())
     except SystemExit as e:
-        # Preserve exit codes, but capture the message for users.
         msg = str(e).strip() or repr(e)
         _write_startup_log(f"SystemExit in {mode_name}: {msg}\n{traceback.format_exc()}")
-        _show_error_dialog(
-            "SÖNDBÖUND failed to start",
-            f"{mode_name} failed to start.\n\n{msg}\n\n"
-            f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
-            f"Log: {_startup_log_path()}",
-        )
-        raise
+        if show_dialog:
+            _show_error_dialog(
+                "SÖNDBÖUND failed to start",
+                f"{mode_name} failed to start.\n\n{msg}\n\n"
+                f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
+                f"Log: {_startup_log_path()}",
+            )
+            raise
+        try:
+            return int(getattr(e, "code", 1) or 1)
+        except Exception:
+            return 1
     except Exception as e:
         msg = str(e).strip() or e.__class__.__name__
         _write_startup_log(f"Exception in {mode_name}: {msg}\n{traceback.format_exc()}")
-        _show_error_dialog(
-            "SÖNDBÖUND failed to start",
-            f"{mode_name} crashed on startup.\n\n{msg}\n\n"
-            f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
-            f"Log: {_startup_log_path()}",
-        )
+        if show_dialog:
+            _show_error_dialog(
+                "SÖNDBÖUND failed to start",
+                f"{mode_name} crashed on startup.\n\n{msg}\n\n"
+                f"Tip: you can run `SÖNDBÖUND.exe web` to open in your browser.\n"
+                f"Log: {_startup_log_path()}",
+            )
         return 1
 
 
@@ -164,11 +173,22 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         # Never prevent startup; the app can still run in read-only mode.
         pass
-    # Default: desktop UI.
+    # Default: desktop UI (embedded window). If it can't start (common on
+    # packaged builds when pywebview/pythonnet can't initialize), fall back
+    # to the browser-based web UI so double-clicking the EXE doesn't hard-fail.
     if not argv:
-        return _run_gui_mode(
+        desktop_rc = _run_gui_mode(
             lambda: __import__("soundgen.desktop", fromlist=["run_desktop"]).run_desktop([]),
             mode_name="Desktop UI",
+            argv=[],
+            show_dialog=False,
+        )
+        if int(desktop_rc) == 0:
+            return 0
+        _write_startup_log(f"Desktop UI failed (rc={desktop_rc}); falling back to Web UI")
+        return _run_gui_mode(
+            lambda: (__import__("soundgen.web", fromlist=["main"]).main() or 0),
+            mode_name="Web UI",
             argv=[],
         )
 
