@@ -152,7 +152,7 @@ Want to contribute real UI screenshots? Here are two easy captures to add:
 
 Suggested convention:
 
-- Put images in `.examples/` (e.g. `.examples/web_ui.png`, `.examples/desktop_ui.png`) and open a PR.
+- Put images in `docs/screenshots/` (e.g. `docs/screenshots/web_ui.png`, `docs/screenshots/desktop_ui.png`) and open a PR.
 - Keep them reasonably sized (PNG preferred; GIF optional).
 
 ## Web UI (Control Panel)
