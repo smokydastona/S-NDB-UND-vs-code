@@ -38,3 +38,23 @@ npm run dev
 - Electron reads that URL from stdout and loads it in a `BrowserWindow`.
 
 Backend logs are written under the Electron user data folder (see `electron-backend.log`).
+
+## Build a self-contained installer (no Python required)
+
+This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.
+
+1) Build the backend EXE (from repo root):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_exe.ps1 -Clean
+```
+
+2) Build Electron (from `electron/`):
+
+```powershell
+cd electron
+npm install
+npm run dist
+```
+
+The output will be in `electron/dist/`.

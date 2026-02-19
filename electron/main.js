@@ -6,6 +6,18 @@ const path = require('path');
 let backendProc = null;
 let mainWindow = null;
 
+function resolveBundledBackendExe() {
+  // When packaged by electron-builder, extraResources land under process.resourcesPath.
+  // We copy the PyInstaller onedir folder into: resources/backend/SÖNDBÖUND/
+  const backendFolderName = process.env.SOUNDGEN_BACKEND_FOLDER || 'SÖNDBÖUND';
+  const exeName = `${backendFolderName}.exe`;
+  const exePath = path.join(process.resourcesPath, 'backend', backendFolderName, exeName);
+  if (fs.existsSync(exePath)) {
+    return { exePath, backendFolderName };
+  }
+  return null;
+}
+
 function resolveBackendCommand() {
   // Preferred: use the repo venv if present.
   const repoRoot = path.resolve(__dirname, '..');
@@ -30,9 +42,25 @@ function resolveBackendCommand() {
 
 function startBackend() {
   const repoRoot = path.resolve(__dirname, '..');
-  const { cmd } = resolveBackendCommand();
 
-  const args = ['-m', 'soundgen.app', 'serve', '--host', '127.0.0.1', '--port', '0'];
+  let cmd;
+  let args;
+  let cwd;
+
+  if (app.isPackaged) {
+    const bundled = resolveBundledBackendExe();
+    if (!bundled) {
+      throw new Error('Bundled backend EXE not found in resources. Did you run `npm run prep-backend` before building?');
+    }
+    cmd = bundled.exePath;
+    args = ['serve', '--host', '127.0.0.1', '--port', '0', '--print-json'];
+    cwd = path.dirname(cmd);
+  } else {
+    const resolved = resolveBackendCommand();
+    cmd = resolved.cmd;
+    args = ['-m', 'soundgen.app', 'serve', '--host', '127.0.0.1', '--port', '0', '--print-json'];
+    cwd = repoRoot;
+  }
 
   const logDir = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
@@ -40,7 +68,7 @@ function startBackend() {
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
   backendProc = spawn(cmd, args, {
-    cwd: repoRoot,
+    cwd,
     env: {
       ...process.env,
       // Ensures the backend doesn't try to open a browser window.
@@ -69,7 +97,20 @@ function startBackend() {
     const start = Date.now();
 
     function tryParseUrl(text) {
-      // Expected line from soundgen.serve: SOUNDGEN_URL=http://127.0.0.1:7860
+      // Preferred (machine-readable): a single JSON line like {"url": "http://127.0.0.1:7860", ...}
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        const t = (line || '').trim();
+        if (!t) continue;
+        if (t.startsWith('{') && t.endsWith('}')) {
+          try {
+            const obj = JSON.parse(t);
+            if (obj && obj.url) return String(obj.url);
+          } catch {}
+        }
+      }
+
+      // Back-compat: SOUNDGEN_URL=...
       const m = text.match(/SOUNDGEN_URL=(https?:\/\/[^\s]+)/);
       if (m && m[1]) return m[1];
       return null;

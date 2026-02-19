@@ -65,3 +65,4 @@ electron/package-lock.json
 electron/yarn.lock
 electron/pnpm-lock.yaml
 electron/dist/
+electron/backend/
