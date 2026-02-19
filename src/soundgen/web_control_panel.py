@@ -256,21 +256,39 @@ def _ui_project_load(project_root: str):
 
         proj = load_project(root)
     except FileNotFoundError:
-        expected = root / "sndbund_project.json"
-        hint = (
-            "No project found in this folder yet.\n\n"
-            "Create one with:\n"
-            f"  SÖNDBÖUND.exe project create --root \"{root}\" --id myproj --namespace mymod\n\n"
-            "Then click 'Load project' again."
-        )
-        stub = {
-            "error": "Project not initialized",
-            "root": str(root),
-            "expected": str(expected),
-            "hint": hint,
-            "items": [],
-        }
-        return stub, [], gr.update(choices=[], value=None), hint
+        # Auto-init: create a basic project so the UI doesn't error on first use.
+        try:
+            from .minecraft import sanitize_id
+            from .project import create_project, load_project
+
+            root.mkdir(parents=True, exist_ok=True)
+            ns = sanitize_id(str(root.resolve().name or "soundgen"), kind="namespace")
+            create_project(
+                project_root=root,
+                kind="soundpack",
+                project_id="project",
+                title="SÖNDBÖUND Project",
+                namespace=ns,
+                pack_root="resourcepack",
+            )
+            proj = load_project(root)
+        except Exception as e:
+            expected = root / "sndbund_project.json"
+            hint = (
+                "No project found in this folder and auto-create failed.\n\n"
+                "Create one with:\n"
+                f"  SÖNDBÖUND.exe project create --root \"{root}\" --id myproj --namespace mymod\n\n"
+                f"Expected file: {expected}\n\n"
+                f"Auto-create error: {e}"
+            )
+            stub = {
+                "error": "Project not initialized",
+                "root": str(root),
+                "expected": str(expected),
+                "hint": hint,
+                "items": [],
+            }
+            return stub, [], gr.update(choices=[], value=None), hint
     except Exception as e:
         return {"error": str(e), "root": str(root)}, [], gr.update(choices=[], value=None), f"Load failed: {e}"
 
