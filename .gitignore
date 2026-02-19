@@ -30,6 +30,7 @@ example_*.json
 
 # Allow a small, versioned set of UI assets used by README + app styling.
 !.examples/
+/.examples/*
 !.examples/icon.png
 !.examples/background.png
 !.examples/Banner.png
