@@ -74,6 +74,16 @@ Optional: if you have a crash upload endpoint (Crashpad-compatible), set:
 $env:SOUNDGEN_CRASH_SUBMIT_URL = "https://your-crash-endpoint.example/upload"
 ```
 
+## System tray (optional)
+
+To enable a Windows-style system tray icon (click to show/hide, right-click for Quit):
+
+```powershell
+$env:SOUNDGEN_TRAY = "1"
+```
+
+When tray is enabled, closing the window will hide it instead of quitting (use the tray menu to Quit).
+
 ## Build a self-contained installer (no Python required)
 
 This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.
