@@ -333,6 +333,7 @@ def chat_once(
     user_text: str,
     history: list[tuple[str, str]] | None,
     system_prompt: str | None = None,
+    app_context: str | None = None,
     endpoint: str | None = None,
     model_or_deployment: str | None = None,
     api_key: str | None = None,
@@ -341,6 +342,9 @@ def chat_once(
     timeout_s: float = 60.0,
 ) -> str:
     sys_p = (system_prompt or os.environ.get("SOUNDGEN_AI_SYSTEM_PROMPT") or "").strip() or default_system_prompt()
+    ctx = str(app_context or "").strip()
+    if ctx:
+        sys_p = sys_p.rstrip() + "\n\n" + "APP CONTEXT (local project docs/specs):\n" + ctx
     messages = _as_messages(sys_p, history, user_text)
 
     if provider == "local-ollama":

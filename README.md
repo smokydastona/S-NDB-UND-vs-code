@@ -134,6 +134,7 @@ Copilot notes:
 
 - Default provider is **Local (Ollama)** (offline-capable). Install Ollama and pull a model, e.g. `ollama pull llama3.2`.
 - The Control Panel includes a **“Setup local Copilot (Ollama)”** button that can install Ollama via `winget` (Windows) and/or pull the selected model.
+- Copilot can automatically **include local project docs/specs/examples** with each message (toggle: “Include app context”). This improves accuracy for questions about manifests, engines, exports, and project structure.
 - Cloud mode is optional: pick **Cloud (OpenAI-compatible)** or **Cloud (Azure OpenAI)** and paste your key (keys are not saved).
 
 If you want the previous accordion-heavy UI, run with:

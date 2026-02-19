@@ -23,6 +23,7 @@ from .ai_assistant import (
     ollama_pull_model,
     ollama_reachable,
 )
+from .ai_context import build_app_context
 from .engine_registry import available_engines, generate_wav
 from .io_utils import convert_audio_with_ffmpeg, read_wav_mono, write_wav
 from .postprocess import PostProcessParams, post_process_audio
@@ -1203,6 +1204,7 @@ def build_demo_control_panel() -> gr.Blocks:
                     value="Local (Ollama)",
                     label="Provider",
                 )
+                ai_include_context = gr.Checkbox(value=True, label="Include app context (recommended)")
                 with gr.Accordion("Settings", open=False):
                     ai_endpoint = gr.Textbox(value="http://localhost:11434", label="Endpoint")
                     ai_model = gr.Textbox(value="llama3.2", label="Model (or Azure deployment)")
@@ -1328,6 +1330,7 @@ def build_demo_control_panel() -> gr.Blocks:
             api_key: str,
             api_version: str,
             temperature: float,
+            include_context: bool,
             history: list[tuple[str, str]] | None,
             msg: str,
         ):
@@ -1344,10 +1347,14 @@ def build_demo_control_panel() -> gr.Blocks:
                 kind = "local-ollama"
 
             try:
+                ctx = ""
+                if bool(include_context):
+                    ctx = build_app_context(query=text)
                 out = chat_once(
                     provider=kind,  # type: ignore[arg-type]
                     user_text=text,
                     history=history or [],
+                    app_context=ctx,
                     endpoint=str(endpoint or "").strip(),
                     model_or_deployment=str(model_or_deployment or "").strip(),
                     api_key=str(api_key or "").strip(),
@@ -1452,12 +1459,32 @@ def build_demo_control_panel() -> gr.Blocks:
 
         ai_send_btn.click(
             fn=_ai_send,
-            inputs=[ai_provider, ai_endpoint, ai_model, ai_api_key, ai_api_version, ai_temperature, ai_chat, ai_msg],
+            inputs=[
+                ai_provider,
+                ai_endpoint,
+                ai_model,
+                ai_api_key,
+                ai_api_version,
+                ai_temperature,
+                ai_include_context,
+                ai_chat,
+                ai_msg,
+            ],
             outputs=[ai_chat, ai_status],
         )
         ai_msg.submit(
             fn=_ai_send,
-            inputs=[ai_provider, ai_endpoint, ai_model, ai_api_key, ai_api_version, ai_temperature, ai_chat, ai_msg],
+            inputs=[
+                ai_provider,
+                ai_endpoint,
+                ai_model,
+                ai_api_key,
+                ai_api_version,
+                ai_temperature,
+                ai_include_context,
+                ai_chat,
+                ai_msg,
+            ],
             outputs=[ai_chat, ai_status],
         )
         ai_clear_btn.click(fn=_ai_clear, inputs=[], outputs=[ai_chat, ai_status])
