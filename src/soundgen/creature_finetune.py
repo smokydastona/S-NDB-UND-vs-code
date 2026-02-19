@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .io_utils import convert_audio_with_ffmpeg
+from .json_utils import load_json_file_lenient
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,8 +58,11 @@ def _iter_credits_sidecars(inputs: list[Path]) -> list[Path]:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else {}
+    try:
+        data = load_json_file_lenient(path, context=f"Credits JSON file: {path}")
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def _infer_audio_path(sidecar: Path) -> Path | None:

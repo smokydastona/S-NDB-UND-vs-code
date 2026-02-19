@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .io_utils import find_ffmpeg
+from .json_utils import JsonParseError, load_json_file_lenient
 
 
 @dataclass(frozen=True)
@@ -116,7 +117,11 @@ def wav_to_minecraft_ogg(
 def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        obj = load_json_file_lenient(path, context=f"Minecraft JSON file: {path}")
+    except JsonParseError as e:
+        raise ValueError(str(e)) from e
+    return obj if isinstance(obj, dict) else {}
 
 
 def _save_json(path: Path, data: dict[str, Any]) -> None:

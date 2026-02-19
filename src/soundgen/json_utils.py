@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -120,3 +121,12 @@ def loads_json_lenient(raw: str, *, context: str) -> Any:
             original=text,
             message=f"Invalid JSON ({e1}).",
         ) from e1
+
+
+def load_json_file_lenient(path: str | Path, *, context: str) -> Any:
+    p = Path(path)
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except Exception as e:
+        raise JsonParseError(context=context, original=str(p), message=f"Failed to read file: {e}") from e
+    return loads_json_lenient(raw, context=context)

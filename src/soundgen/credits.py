@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .minecraft import sanitize_id
+from .json_utils import load_json_file_lenient
 
 
 def write_sidecar_credits(audio_path: Path, credits: dict[str, Any]) -> Path:
@@ -51,8 +52,11 @@ def upsert_pack_credits(
 
     out = pack_root / "assets" / namespace / "soundgen_credits.json"
     if out.exists():
-        data = json.loads(out.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
+        try:
+            data = load_json_file_lenient(out, context=f"Pack credits JSON file: {out}")
+            if not isinstance(data, dict):
+                data = {}
+        except Exception:
             data = {}
     else:
         data = {}

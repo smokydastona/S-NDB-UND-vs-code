@@ -120,11 +120,16 @@ def _rel(project_root: Path, path: Path) -> str:
 
 
 def _maybe_read_credits(wav_path: Path) -> dict[str, Any] | None:
+    from .json_utils import load_json_file_lenient
+
     sidecar = Path(str(wav_path) + ".credits.json")
     if not sidecar.exists():
         return None
-    data = json.loads(sidecar.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else None
+    try:
+        data = load_json_file_lenient(sidecar, context=f"Credits sidecar JSON file: {sidecar}")
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
 
 def _write_credits_sidecar(wav_path: Path, credits: dict[str, Any]) -> None:

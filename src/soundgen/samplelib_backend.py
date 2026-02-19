@@ -15,6 +15,7 @@ import numpy as np
 from scipy.signal import resample_poly
 
 from .io_utils import find_ffmpeg, read_wav_mono, write_wav
+from .json_utils import load_json_file_lenient
 
 
 _AUDIO_EXTS = {".wav", ".ogg", ".mp3", ".flac"}
@@ -117,7 +118,7 @@ def _load_index(path: Path) -> dict[str, Any] | None:
     try:
         if not path.exists():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json_file_lenient(path, context=f"SampleLib index JSON file: {path}")
         if not isinstance(data, dict) or data.get("version") != _INDEX_VERSION:
             return None
         if not isinstance(data.get("zips"), dict):

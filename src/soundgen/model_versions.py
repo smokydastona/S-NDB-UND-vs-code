@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .json_utils import JsonParseError, load_json_file_lenient
+
 
 @dataclass(frozen=True)
 class ModelVersion:
@@ -73,7 +75,10 @@ def load_model_versions(path: Path = Path("library") / "model_versions.json") ->
         else:
             return {}
 
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = load_json_file_lenient(path, context=f"Model versions JSON file: {path}")
+    except JsonParseError as e:
+        raise ValueError(str(e)) from e
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid model versions file (expected object): {path}")
 

@@ -183,7 +183,9 @@ def load_index() -> dict[str, IndexedFile] | None:
     try:
         if not p.exists() or not p.is_file():
             return None
-        data = json.loads(p.read_text(encoding="utf-8"))
+        from .json_utils import load_json_file_lenient
+
+        data = load_json_file_lenient(p, context=f"AI index JSON file: {p}")
         files = {}
         for rel, v in (data.get("files") or {}).items():
             if not isinstance(v, dict):

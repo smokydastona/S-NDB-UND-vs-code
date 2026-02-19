@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .json_utils import JsonParseError, load_json_file_lenient
+
 
 @dataclass(frozen=True)
 class FXChain:
@@ -175,7 +177,10 @@ def load_fx_chain_json(path: str | Path) -> tuple[dict[str, Any], bool, bool]:
     """
 
     p = Path(path)
-    obj = json.loads(p.read_text(encoding="utf-8"))
+    try:
+        obj = load_json_file_lenient(p, context=f"FX chain JSON file: {p}")
+    except JsonParseError as e:
+        raise ValueError(str(e)) from e
 
     if isinstance(obj, dict) and "args" in obj:
         enable_post = bool(obj.get("enable_post", True))

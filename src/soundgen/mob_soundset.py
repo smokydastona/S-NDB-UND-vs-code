@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .engine_registry import available_engines
+from .json_utils import load_json_file_lenient
 
 
 def _slug(s: str) -> str:
@@ -176,7 +177,10 @@ def run_mob_soundset(argv: list[str] | None = None) -> int:
     if args.show_snippet:
         sounds_json = Path(pack_root) / "assets" / ns / "sounds.json"
         if sounds_json.exists():
-            data = json.loads(sounds_json.read_text(encoding="utf-8"))
+            try:
+                data = load_json_file_lenient(sounds_json, context=f"Minecraft sounds.json file: {sounds_json}")
+            except Exception:
+                data = {}
             if isinstance(data, dict):
                 snippet = {k: v for k, v in data.items() if str(k).startswith(f"{event_prefix}.")}
                 print("\n--- sounds.json snippet ---")

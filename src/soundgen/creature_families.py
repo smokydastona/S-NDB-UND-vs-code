@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .json_utils import JsonParseError, load_json_file_lenient
+
 
 @dataclass(frozen=True)
 class CreatureFamily:
@@ -45,7 +47,10 @@ def load_creature_families(path: Path = Path("library") / "creature_families.jso
         else:
             return {}
 
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = load_json_file_lenient(path, context=f"Creature families JSON file: {path}")
+    except JsonParseError as e:
+        raise ValueError(str(e)) from e
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid creature families file (expected object): {path}")
 

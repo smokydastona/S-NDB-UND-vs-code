@@ -11,6 +11,7 @@ import numpy as np
 from .fx_chain_v2 import FxChainV2FormatError, apply_fx_chain_v2, load_fx_chain_v2_json
 from .fx_chains import FX_CHAINS, load_fx_chain_json
 from .io_utils import read_wav_mono, write_wav
+from .json_utils import JsonParseError, load_json_file_lenient
 from .postprocess import PostProcessParams, post_process_audio
 
 
@@ -187,7 +188,10 @@ def export_regions(
     if not edits_path.exists():
         raise FileNotFoundError(str(edits_path))
 
-    obj = json.loads(edits_path.read_text(encoding="utf-8"))
+        try:
+            obj = load_json_file_lenient(edits_path, context=f"Regions edits JSON file: {edits_path}")
+        except JsonParseError as e:
+            raise ValueError(str(e)) from e
     rr = obj.get("regions") if isinstance(obj, dict) else None
     if not isinstance(rr, list) or not rr:
         return []

@@ -863,9 +863,9 @@ def _ui_fx_slots_apply(
             continue
         params_s = str(r[3] or "{}").strip() if len(r) >= 4 else "{}"
         try:
-            params = json.loads(params_s) if params_s else {}
-            if not isinstance(params, dict):
-                params = {}
+            from .json_utils import loads_json_object_lenient
+
+            params = loads_json_object_lenient(params_s, context="FX slot params JSON") if params_s else {}
         except Exception:
             params = {}
         steps.append(FxStepV2(module_id=mid, params=dict(params)))
