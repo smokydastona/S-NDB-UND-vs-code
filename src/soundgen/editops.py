@@ -76,6 +76,7 @@ class SessionState:
     session_dir: Path
     sample_rate: int
     cur: str
+    clipboard: str | None
     undo: list[str]
     redo: list[str]
     history: list[dict[str, Any]]
@@ -104,6 +105,7 @@ def _load_state(base: Path, session_id: str) -> SessionState:
         session_dir=sess_dir,
         sample_rate=int(obj["sample_rate"]),
         cur=str(obj["cur"]),
+        clipboard=(str(obj["clipboard"]) if obj.get("clipboard") else None),
         undo=[str(x) for x in (obj.get("undo") or [])],
         redo=[str(x) for x in (obj.get("redo") or [])],
         history=[dict(x) for x in (obj.get("history") or [])],
@@ -115,6 +117,7 @@ def _save_state(st: SessionState) -> None:
         "session_id": st.session_id,
         "sample_rate": int(st.sample_rate),
         "cur": st.cur,
+        "clipboard": st.clipboard,
         "undo": list(st.undo),
         "redo": list(st.redo),
         "history": list(st.history),
@@ -127,6 +130,12 @@ def _new_state_filename(st: SessionState) -> str:
     existing = sorted(st.session_dir.glob("state_*.wav"))
     nxt = len(existing)
     return f"state_{nxt:04d}.wav"
+
+
+def _clipboard_path(st: SessionState) -> Path | None:
+    if not st.clipboard:
+        return None
+    return st.session_dir / str(st.clipboard)
 
 
 def _push_history(st: SessionState, op: str, params: dict[str, Any]) -> None:
@@ -151,6 +160,97 @@ def _commit_new_audio(st: SessionState, audio: np.ndarray, *, op: str, params: d
 
     _push_history(st, op, params)
     _save_state(st)
+
+
+def _op_copy(st: SessionState, *, start: int, end: int) -> dict[str, Any]:
+    audio, sr = read_wav_mono(st.cur_path)
+    if int(sr) != int(st.sample_rate):
+        st.sample_rate = int(sr)
+
+    s, e = _safe_slice(audio, start, end)
+    seg = audio[s:e].copy()
+    if seg.size == 0:
+        raise ValueError("copy requires a non-empty selection")
+
+    fn = "clipboard.wav"
+    write_wav(st.session_dir / fn, _clip_mono(seg), int(st.sample_rate), subtype="PCM_16")
+    st.clipboard = fn
+    _push_history(st, "copy", {"start": int(s), "end": int(e), "samples": int(seg.size)})
+    _save_state(st)
+    return {}
+
+
+def _op_cut(st: SessionState, *, start: int, end: int) -> dict[str, Any]:
+    audio, sr = read_wav_mono(st.cur_path)
+    if int(sr) != int(st.sample_rate):
+        st.sample_rate = int(sr)
+
+    s, e = _safe_slice(audio, start, end)
+    seg = audio[s:e].copy()
+    if seg.size == 0:
+        raise ValueError("cut requires a non-empty selection")
+
+    fn = "clipboard.wav"
+    write_wav(st.session_dir / fn, _clip_mono(seg), int(st.sample_rate), subtype="PCM_16")
+    st.clipboard = fn
+
+    out = np.concatenate([audio[:s], audio[e:]], axis=0).astype(np.float32, copy=False)
+    if out.size == 0:
+        out = np.zeros(1, dtype=np.float32)
+    _commit_new_audio(st, out, op="cut", params={"start": int(s), "end": int(e), "samples": int(seg.size)})
+    return {}
+
+
+def _op_paste(st: SessionState, *, cursor: int, start: int | None, end: int | None) -> dict[str, Any]:
+    audio, sr = read_wav_mono(st.cur_path)
+    if int(sr) != int(st.sample_rate):
+        st.sample_rate = int(sr)
+
+    cbp = _clipboard_path(st)
+    if cbp is None or not cbp.exists():
+        raise ValueError("Nothing to paste (clipboard empty)")
+    clip, clip_sr = read_wav_mono(cbp)
+    if int(clip_sr) != int(st.sample_rate):
+        # Clipboard should match session SR; if not, treat as error to keep MVP simple.
+        raise ValueError("Clipboard sample rate mismatch")
+
+    n = int(audio.size)
+    cur = max(0, min(int(cursor), n))
+
+    if start is not None and end is not None:
+        s, e = _safe_slice(audio, int(start), int(end))
+        out = np.concatenate([audio[:s], clip, audio[e:]], axis=0).astype(np.float32, copy=False)
+        _commit_new_audio(
+            st,
+            out,
+            op="paste",
+            params={"cursor": int(cur), "replace": True, "start": int(s), "end": int(e), "clip_samples": int(clip.size)},
+        )
+        return {}
+
+    out = np.concatenate([audio[:cur], clip, audio[cur:]], axis=0).astype(np.float32, copy=False)
+    _commit_new_audio(
+        st,
+        out,
+        op="paste",
+        params={"cursor": int(cur), "replace": False, "clip_samples": int(clip.size)},
+    )
+    return {}
+
+
+def _op_insert_silence(st: SessionState, *, cursor: int, ms: float) -> dict[str, Any]:
+    audio, sr = read_wav_mono(st.cur_path)
+    if int(sr) != int(st.sample_rate):
+        st.sample_rate = int(sr)
+
+    n = int(audio.size)
+    cur = max(0, min(int(cursor), n))
+    sil_n = int(round(float(ms) * float(st.sample_rate) / 1000.0))
+    sil_n = max(1, sil_n)
+    zeros = np.zeros(sil_n, dtype=np.float32)
+    out = np.concatenate([audio[:cur], zeros, audio[cur:]], axis=0).astype(np.float32, copy=False)
+    _commit_new_audio(st, out, op="silence_insert", params={"cursor": int(cur), "ms": float(ms), "samples": int(sil_n)})
+    return {}
 
 
 def _op_trim(st: SessionState, *, start: int, end: int) -> dict[str, Any]:
@@ -326,12 +426,14 @@ def _op_close(st: SessionState) -> dict[str, Any]:
 
 def _resp(st: SessionState, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     audio, _sr = read_wav_mono(st.cur_path)
+    cbp = _clipboard_path(st)
     out: dict[str, Any] = {
         "session_id": st.session_id,
         "sample_rate": int(st.sample_rate),
         "length_samples": int(audio.size),
         "duration_s": float(audio.size / float(st.sample_rate)) if st.sample_rate else 0.0,
         "current_wav": str(st.cur_path),
+        "has_clipboard": bool(cbp and cbp.exists()),
         "can_undo": bool(st.undo),
         "can_redo": bool(st.redo),
         "history": list(st.history),
@@ -353,9 +455,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_op = sub.add_parser("op", help="Apply an operation")
     p_op.add_argument("--session", required=True)
-    p_op.add_argument("--type", required=True, choices=["trim", "reverse", "fade", "normalize", "pitch", "eq3"])
+    p_op.add_argument(
+        "--type",
+        required=True,
+        choices=["trim", "reverse", "fade", "normalize", "pitch", "eq3", "copy", "cut", "paste", "silence_insert"],
+    )
     p_op.add_argument("--start", type=int)
     p_op.add_argument("--end", type=int)
+    p_op.add_argument("--cursor", type=int)
+
+    p_op.add_argument("--silence-ms", type=float, default=250.0)
 
     p_op.add_argument("--fade-mode", choices=["in", "out"], default="in")
     p_op.add_argument("--fade-ms", type=float, default=30.0)
@@ -405,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
             session_dir=sess_dir,
             sample_rate=int(sr),
             cur=cur,
+            clipboard=None,
             undo=[],
             redo=[],
             history=[],
@@ -424,6 +534,7 @@ def main(argv: list[str] | None = None) -> int:
         t = str(args.type)
         start = args.start
         end = args.end
+        cursor = args.cursor
 
         if t == "trim":
             if start is None or end is None:
@@ -448,6 +559,22 @@ def main(argv: list[str] | None = None) -> int:
                 start=start,
                 end=end,
             )
+        elif t == "copy":
+            if start is None or end is None:
+                raise SystemExit("copy requires --start and --end")
+            _op_copy(st, start=int(start), end=int(end))
+        elif t == "cut":
+            if start is None or end is None:
+                raise SystemExit("cut requires --start and --end")
+            _op_cut(st, start=int(start), end=int(end))
+        elif t == "paste":
+            if cursor is None:
+                raise SystemExit("paste requires --cursor")
+            _op_paste(st, cursor=int(cursor), start=start, end=end)
+        elif t == "silence_insert":
+            if cursor is None:
+                raise SystemExit("silence_insert requires --cursor")
+            _op_insert_silence(st, cursor=int(cursor), ms=float(args.silence_ms))
         else:
             raise SystemExit(f"Unknown op type: {t}")
 

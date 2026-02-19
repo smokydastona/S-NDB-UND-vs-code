@@ -713,6 +713,13 @@ function registerEditorIpc() {
       args.push('--start', String(p.start));
       args.push('--end', String(p.end));
     }
+    if (p.cursor != null) {
+      args.push('--cursor', String(p.cursor));
+    }
+
+    if (type === 'silence_insert') {
+      args.push('--silence-ms', String(p.silenceMs != null ? p.silenceMs : 250.0));
+    }
 
     if (type === 'fade') {
       args.push('--fade-mode', String(p.fadeMode || 'in'));

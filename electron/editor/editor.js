@@ -5,6 +5,10 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   openBtn: $("openBtn"),
   trimBtn: $("trimBtn"),
+  cutBtn: $("cutBtn"),
+  copyBtn: $("copyBtn"),
+  pasteBtn: $("pasteBtn"),
+  silenceBtn: $("silenceBtn"),
   fadeInBtn: $("fadeInBtn"),
   fadeOutBtn: $("fadeOutBtn"),
   normBtn: $("normBtn"),
@@ -36,6 +40,9 @@ const state = {
   selecting: false,
   selectionStart: null,
   selectionEnd: null,
+  scrubbing: false,
+  lastScrubAt: 0,
+  scrubSource: null,
   panMode: false,
   panAnchorX: 0,
   panAnchorViewStart: 0,
@@ -62,7 +69,24 @@ function selectionRange() {
 }
 
 function enableEditing(enabled) {
-  for (const b of [ui.trimBtn, ui.fadeInBtn, ui.fadeOutBtn, ui.normBtn, ui.revBtn, ui.pitchBtn, ui.eqBtn, ui.undoBtn, ui.redoBtn, ui.exportBtn, ui.playBtn, ui.stopBtn]) {
+  for (const b of [
+    ui.trimBtn,
+    ui.cutBtn,
+    ui.copyBtn,
+    ui.pasteBtn,
+    ui.silenceBtn,
+    ui.fadeInBtn,
+    ui.fadeOutBtn,
+    ui.normBtn,
+    ui.revBtn,
+    ui.pitchBtn,
+    ui.eqBtn,
+    ui.undoBtn,
+    ui.redoBtn,
+    ui.exportBtn,
+    ui.playBtn,
+    ui.stopBtn
+  ]) {
     b.disabled = !enabled;
   }
 }
@@ -217,6 +241,44 @@ function stopPlayback() {
   state.playing = false;
 }
 
+function stopScrub() {
+  try {
+    if (state.scrubSource) state.scrubSource.stop();
+  } catch {}
+  state.scrubSource = null;
+}
+
+async function scrubPreviewAt(sampleIndex) {
+  if (!state.audioCtx || !state.audioBuffer) return;
+  const now = performance.now();
+  if (now - state.lastScrubAt < 35) return; // throttle
+  state.lastScrubAt = now;
+
+  // Ensure the AudioContext is running (some browsers require a user gesture).
+  try {
+    if (state.audioCtx.state !== 'running') await state.audioCtx.resume();
+  } catch {}
+
+  stopScrub();
+
+  const sr = state.sampleRate || 1;
+  const t = clamp(sampleIndex / sr, 0, state.audioBuffer.duration);
+  const dur = 0.045;
+
+  const src = state.audioCtx.createBufferSource();
+  src.buffer = state.audioBuffer;
+  src.connect(state.audioCtx.destination);
+  src.onended = () => { if (state.scrubSource === src) state.scrubSource = null; };
+  state.scrubSource = src;
+
+  try {
+    // duration form can throw if duration <= 0 or start is at EOF.
+    src.start(0, t, Math.max(0.01, Math.min(dur, Math.max(0, state.audioBuffer.duration - t))));
+  } catch {
+    try { src.start(0, t); } catch {}
+  }
+}
+
 function playFromCursor() {
   if (!state.audioCtx || !state.audioBuffer) return;
   stopPlayback();
@@ -265,6 +327,7 @@ function playFromCursor() {
 function updateButtonsFromResp(resp) {
   ui.undoBtn.disabled = !resp.can_undo;
   ui.redoBtn.disabled = !resp.can_redo;
+  ui.pasteBtn.disabled = !resp.has_clipboard;
 }
 
 function renderHistory(items) {
@@ -290,13 +353,14 @@ async function refreshFromResp(resp) {
   state.sampleRate = resp.sample_rate;
   state.currentWavPath = resp.current_wav;
 
+  enableEditing(true);
+
   ui.fileInfo.textContent = `SR ${resp.sample_rate} Hz | ${resp.duration_s.toFixed(3)} s | ${resp.length_samples} samples`;
 
   updateButtonsFromResp(resp);
   renderHistory(resp.history);
 
   await loadAudioFromWavPath(resp.current_wav);
-  enableEditing(true);
   setStatus('');
 }
 
@@ -328,6 +392,7 @@ async function applyOp(type, args = {}) {
       type,
       start: sel ? sel[0] : null,
       end: sel ? sel[1] : null,
+      cursor: state.cursor,
       ...args,
     };
     const resp = await soundgenEditor.editopsOp(payload);
@@ -342,6 +407,24 @@ ui.trimBtn.onclick = () => {
   const sel = selectionRange();
   if (!sel) return setStatus('Trim requires a selection.');
   applyOp('trim');
+};
+ui.copyBtn.onclick = () => {
+  const sel = selectionRange();
+  if (!sel) return setStatus('Copy requires a selection.');
+  applyOp('copy');
+};
+ui.cutBtn.onclick = () => {
+  const sel = selectionRange();
+  if (!sel) return setStatus('Cut requires a selection.');
+  applyOp('cut');
+};
+ui.pasteBtn.onclick = () => {
+  applyOp('paste');
+};
+ui.silenceBtn.onclick = () => {
+  const ms = parseFloat(prompt('Insert silence (ms):', '250') || '');
+  if (!isFinite(ms) || ms <= 0) return;
+  applyOp('silence_insert', { silenceMs: ms });
 };
 ui.fadeInBtn.onclick = () => {
   const ms = parseFloat(prompt('Fade in (ms):', '30') || '');
@@ -419,6 +502,15 @@ ui.canvas.addEventListener('mousedown', (ev) => {
     state.panAnchorViewEnd = state.viewEnd;
     return;
   }
+  if (ev.altKey) {
+    state.scrubbing = true;
+    const s = xToSample(ev.clientX);
+    state.cursor = s;
+    updateTimeLabel();
+    draw();
+    scrubPreviewAt(s);
+    return;
+  }
   state.selecting = true;
   const s = xToSample(ev.clientX);
   state.selectionStart = s;
@@ -448,6 +540,15 @@ ui.canvas.addEventListener('mousemove', (ev) => {
     return;
   }
 
+  if (state.scrubbing) {
+    const s = xToSample(ev.clientX);
+    state.cursor = s;
+    updateTimeLabel();
+    draw();
+    scrubPreviewAt(s);
+    return;
+  }
+
   if (!state.selecting) return;
   const s = xToSample(ev.clientX);
   state.selectionEnd = s;
@@ -459,6 +560,11 @@ ui.canvas.addEventListener('mousemove', (ev) => {
 ui.canvas.addEventListener('mouseup', (ev) => {
   if (state.panMode) {
     state.panMode = false;
+    return;
+  }
+  if (state.scrubbing) {
+    state.scrubbing = false;
+    stopScrub();
     return;
   }
   if (!state.selecting) return;
@@ -473,6 +579,10 @@ ui.canvas.addEventListener('mouseup', (ev) => {
 ui.canvas.addEventListener('mouseleave', () => {
   state.selecting = false;
   state.panMode = false;
+  if (state.scrubbing) {
+    state.scrubbing = false;
+    stopScrub();
+  }
 });
 
 ui.canvas.addEventListener('wheel', (ev) => {
@@ -504,6 +614,25 @@ window.addEventListener('keydown', (ev) => {
     playFromCursor();
     return;
   }
+  if (ev.ctrlKey && ev.key.toLowerCase() === 'c') {
+    const sel = selectionRange();
+    if (!sel) return;
+    ev.preventDefault();
+    ui.copyBtn.click();
+    return;
+  }
+  if (ev.ctrlKey && ev.key.toLowerCase() === 'x') {
+    const sel = selectionRange();
+    if (!sel) return;
+    ev.preventDefault();
+    ui.cutBtn.click();
+    return;
+  }
+  if (ev.ctrlKey && ev.key.toLowerCase() === 'v') {
+    ev.preventDefault();
+    ui.pasteBtn.click();
+    return;
+  }
   if (ev.ctrlKey && ev.key.toLowerCase() === 'z') {
     ev.preventDefault();
     ui.undoBtn.click();
@@ -517,6 +646,7 @@ window.addEventListener('keydown', (ev) => {
 
 window.addEventListener('beforeunload', async () => {
   stopPlayback();
+  stopScrub();
   if (state.sessionId) {
     try { await soundgenEditor.editopsClose(state.sessionId); } catch {}
   }
