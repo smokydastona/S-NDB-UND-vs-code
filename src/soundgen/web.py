@@ -59,6 +59,34 @@ def _ui_icon_data_uri() -> str | None:
     return None
 
 
+def _ui_background_data_uri() -> str | None:
+    """Return a data: URI for the UI background image, if available."""
+
+    candidates: list[Path] = []
+    candidates.append(Path(".examples") / "background.png")
+    try:
+        candidates.append(Path(__file__).resolve().parents[2] / ".examples" / "background.png")
+    except Exception:
+        pass
+
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / ".examples" / "background.png")
+        candidates.append(exe_dir / "background.png")
+    except Exception:
+        pass
+
+    for p in candidates:
+        try:
+            if p.exists() and p.is_file():
+                b = p.read_bytes()
+                enc = base64.b64encode(b).decode("ascii")
+                return f"data:image/png;base64,{enc}"
+        except Exception:
+            continue
+    return None
+
+
 def _as_existing_path(v: object) -> Path | None:
     if v is None:
         return None
@@ -1283,6 +1311,7 @@ def _generate(
 
 def build_demo_legacy() -> gr.Blocks:
     icon_uri = _ui_icon_data_uri()
+    bg_uri = _ui_background_data_uri()
     watermark_css = ""
     if icon_uri:
         watermark_css = f"""
@@ -1302,8 +1331,21 @@ def build_demo_legacy() -> gr.Blocks:
     .gradio-container > * {{ position: relative; z-index: 1; }}
     """
 
+    bg_css = "    .gradio-container { background: #0b0d10; }"
+    if bg_uri:
+        bg_css = f"""
+    .gradio-container {{
+        background: #0b0d10;
+        background-image: url(\"{bg_uri}\");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        background-attachment: fixed;
+    }}
+    """.strip("\n")
+
     css = f"""
-    .gradio-container {{ background: #0b0d10; }}
+    {bg_css}
     .gradio-container * {{ color-scheme: dark; }}
     {watermark_css}
     """

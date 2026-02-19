@@ -87,6 +87,12 @@ if (Test-Path $iconPng) {
   $commonArgs += @("--add-data", "$iconPng;.examples")
 }
 
+# Optional UI background image.
+$bgPng = ".examples/background.png"
+if (Test-Path $bgPng) {
+  $commonArgs += @("--add-data", "$bgPng;.examples")
+}
+
 $commonCollect = @(
   "--collect-all", "soundgen",
   "--collect-all", "numpy",

@@ -28,6 +28,12 @@ library/
 example_*.json
 !example_manifest.json
 
+# Allow a small, versioned set of UI assets used by README + app styling.
+!.examples/
+!.examples/icon.png
+!.examples/background.png
+!.examples/Banner.png
+
 # Pre-generated prompt inputs (drop docs here)
 pre_gen_sound/
 
