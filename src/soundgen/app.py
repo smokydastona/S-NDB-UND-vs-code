@@ -107,6 +107,16 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
 
     _write_startup_log(f"mode={mode_name} argv={argv!r}")
 
+    # Desktop UI: on Windows, try a best-effort first-run prereq bootstrap.
+    if mode_name == "Desktop UI":
+        try:
+            from .prereqs_windows import ensure_desktop_prereqs_first_run
+
+            ensure_desktop_prereqs_first_run()
+        except Exception:
+            # Best-effort only; never prevent startup.
+            pass
+
     # Desktop UI: hide the console only after the embedded window is actually up.
     # The desktop launcher will act on this env var when the GUI backend is ready.
     if mode_name == "Desktop UI" and _should_hide_console_window_windows():

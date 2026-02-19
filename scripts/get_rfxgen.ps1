@@ -56,47 +56,6 @@ function Select-Asset($release, [string]$AssetRegex) {
     return $picked
 }
 
-function Download-File([string]$Url, [string]$OutFile) {
-    Write-Info "Downloading: $Url"
-    Write-Info "To: $OutFile"
-
-    $tmpDir = Split-Path -Parent $OutFile
-    if (-not (Test-Path $tmpDir)) {
-        New-Item -ItemType Directory -Path $tmpDir | Out-Null
-    }
-
-    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
-}
-
-function Ensure-Installed([string]$InstallDir, [string]$ZipPath) {
-    $installPath = Resolve-Path -LiteralPath (Join-Path $InstallDir ".") -ErrorAction SilentlyContinue
-    if (-not $installPath) {
-        New-Item -ItemType Directory -Path $InstallDir | Out-Null
-        $installPath = Resolve-Path -LiteralPath (Join-Path $InstallDir ".")
-    }
-
-    $extractDir = Join-Path $env:TEMP ("rfxgen_extract_" + [Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Path $extractDir | Out-Null
-
-    try {
-        Write-Info "Extracting archive"
-        Expand-Archive -Path $ZipPath -DestinationPath $extractDir -Force
-
-        $exe = Get-ChildItem -Path $extractDir -Recurse -Filter "rfxgen.exe" | Select-Object -First 1
-        if (-not $exe) {
-            throw "Could not find rfxgen.exe inside the downloaded archive."
-        }
-
-        $targetExe = Join-Path $installPath "rfxgen.exe"
-        Copy-Item -Path $exe.FullName -Destination $targetExe -Force
-        Write-Info "Installed: $targetExe"
-
-        return $targetExe
-    } finally {
-        Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 # ---- main ----
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot ".."))
@@ -109,12 +68,43 @@ try {
     $zipPath = Join-Path $cacheDir $asset.name
 
     if (-not (Test-Path $zipPath)) {
-        Download-File -Url $asset.browser_download_url -OutFile $zipPath
+        Write-Info "Downloading: $($asset.browser_download_url)"
+        Write-Info "To: $zipPath"
+
+        $tmpDir = Split-Path -Parent $zipPath
+        if (-not (Test-Path $tmpDir)) {
+            New-Item -ItemType Directory -Path $tmpDir | Out-Null
+        }
+
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -UseBasicParsing
     } else {
         Write-Info "Using cached download: $zipPath"
     }
 
-    $exePath = Ensure-Installed -InstallDir $InstallDir -ZipPath $zipPath
+    $installPath = Resolve-Path -LiteralPath (Join-Path $InstallDir ".") -ErrorAction SilentlyContinue
+    if (-not $installPath) {
+        New-Item -ItemType Directory -Path $InstallDir | Out-Null
+        $installPath = Resolve-Path -LiteralPath (Join-Path $InstallDir ".")
+    }
+
+    $extractDir = Join-Path $env:TEMP ("rfxgen_extract_" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $extractDir | Out-Null
+
+    try {
+        Write-Info "Extracting archive"
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+        $exe = Get-ChildItem -Path $extractDir -Recurse -Filter "rfxgen.exe" | Select-Object -First 1
+        if (-not $exe) {
+            throw "Could not find rfxgen.exe inside the downloaded archive."
+        }
+
+        $exePath = Join-Path $installPath "rfxgen.exe"
+        Copy-Item -Path $exe.FullName -Destination $exePath -Force
+        Write-Info "Installed: $exePath"
+    } finally {
+        Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     Write-Info "Quick check: rfxgen.exe --help"
     & $exePath --help | Select-Object -First 20
