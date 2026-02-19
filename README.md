@@ -123,11 +123,17 @@ Panels available in the UI:
 - **Waveform Viewer**: play audio, view waveform/spectrogram, apply numeric edits (start/end/fades).
 - **FX Slots**: slot-based FX chain (no drag UI) for audition on the current variant.
 - **Export**: export selected or locked variants to a `.zip` bundle with token-based filenames.
+- **Copilot (optional)**: chat helper for prompts, manifests, naming, subtitles, and error explanations.
 
 Notes:
 
 - The Control Panel keeps generated audio **in-memory** for fast iteration (preview/edits/FX). Files are written only during export.
 - By default, temporary Control Panel WAVs are deleted after ingest. To keep them for debugging: `SOUNDGEN_CONTROL_PANEL_KEEP_WAVS=1` (or `SOUNDGEN_CP_KEEP_WAVS=1`).
+
+Copilot notes:
+
+- Default provider is **Local (Ollama)** (offline-capable). Install Ollama and pull a model, e.g. `ollama pull llama3.2`.
+- Cloud mode is optional: pick **Cloud (OpenAI-compatible)** or **Cloud (Azure OpenAI)** and paste your key (keys are not saved).
 
 If you want the previous accordion-heavy UI, run with:
 

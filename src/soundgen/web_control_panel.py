@@ -15,6 +15,7 @@ from typing import Any
 import gradio as gr
 import numpy as np
 
+from .ai_assistant import AIChatError, chat_once
 from .engine_registry import available_engines, generate_wav
 from .io_utils import convert_audio_with_ffmpeg, read_wav_mono, write_wav
 from .postprocess import PostProcessParams, post_process_audio
@@ -1182,6 +1183,33 @@ def build_demo_control_panel() -> gr.Blocks:
                     with gr.Tab("Loudness"):
                         analysis_txt = gr.Textbox(label="RMS dBFS / Peak", interactive=False)
 
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("## Copilot (optional)")
+                gr.Markdown(
+                    "Local-first helper for prompt writing, naming, manifests, subtitles, and error explanations. "
+                    "No API keys are saved."
+                )
+
+                ai_provider = gr.Dropdown(
+                    ["Local (Ollama)", "Cloud (OpenAI-compatible)", "Cloud (Azure OpenAI)"],
+                    value="Local (Ollama)",
+                    label="Provider",
+                )
+                with gr.Accordion("Settings", open=False):
+                    ai_endpoint = gr.Textbox(value="http://localhost:11434", label="Endpoint")
+                    ai_model = gr.Textbox(value="llama3.2", label="Model (or Azure deployment)")
+                    ai_api_key = gr.Textbox(value="", label="API key (cloud only)", type="password")
+                    ai_api_version = gr.Textbox(value="2024-02-15-preview", label="Azure API version (Azure only)")
+                    ai_temperature = gr.Slider(0.0, 1.0, value=0.2, step=0.05, label="Temperature")
+
+                ai_chat = gr.Chatbot(label="Chat", height=360)
+                ai_msg = gr.Textbox(value="", label="Message")
+                with gr.Row():
+                    ai_send_btn = gr.Button("Send")
+                    ai_clear_btn = gr.Button("Clear")
+                ai_status = gr.Textbox(label="Status", interactive=False)
+
         generate_btn.click(
             fn=_ui_generate_variants,
             inputs=[
@@ -1263,6 +1291,88 @@ def build_demo_control_panel() -> gr.Blocks:
             ],
             outputs=[export_out, export_status],
         )
+
+        def _ai_defaults(provider_label: str):
+            p = str(provider_label or "").strip().lower()
+            if "azure" in p:
+                return (
+                    gr.update(value="https://YOUR-RESOURCE-NAME.openai.azure.com"),
+                    gr.update(value="YOUR-DEPLOYMENT"),
+                    gr.update(value="2024-02-15-preview"),
+                )
+            if "openai" in p:
+                return (
+                    gr.update(value="https://api.openai.com/v1"),
+                    gr.update(value="gpt-4o-mini"),
+                    gr.update(value="2024-02-15-preview"),
+                )
+            # Local (Ollama)
+            return (
+                gr.update(value="http://localhost:11434"),
+                gr.update(value="llama3.2"),
+                gr.update(value="2024-02-15-preview"),
+            )
+
+        def _ai_send(
+            provider_label: str,
+            endpoint: str,
+            model_or_deployment: str,
+            api_key: str,
+            api_version: str,
+            temperature: float,
+            history: list[tuple[str, str]] | None,
+            msg: str,
+        ):
+            text = str(msg or "").strip()
+            if not text:
+                return history or [], ""
+
+            p = str(provider_label or "").strip().lower()
+            if "azure" in p:
+                kind = "cloud-azure"
+            elif "openai" in p:
+                kind = "cloud-openai"
+            else:
+                kind = "local-ollama"
+
+            try:
+                out = chat_once(
+                    provider=kind,  # type: ignore[arg-type]
+                    user_text=text,
+                    history=history or [],
+                    endpoint=str(endpoint or "").strip(),
+                    model_or_deployment=str(model_or_deployment or "").strip(),
+                    api_key=str(api_key or "").strip(),
+                    api_version=str(api_version or "").strip(),
+                    temperature=float(temperature),
+                )
+                new_hist = list(history or []) + [(text, out)]
+                return new_hist, "OK"
+            except AIChatError as e:
+                err = f"Error: {e}"
+                new_hist = list(history or []) + [(text, err)]
+                return new_hist, err
+            except Exception as e:
+                err = f"Error: {e}"
+                new_hist = list(history or []) + [(text, err)]
+                return new_hist, err
+
+        def _ai_clear():
+            return [], ""
+
+        ai_provider.change(fn=_ai_defaults, inputs=[ai_provider], outputs=[ai_endpoint, ai_model, ai_api_version])
+
+        ai_send_btn.click(
+            fn=_ai_send,
+            inputs=[ai_provider, ai_endpoint, ai_model, ai_api_key, ai_api_version, ai_temperature, ai_chat, ai_msg],
+            outputs=[ai_chat, ai_status],
+        )
+        ai_msg.submit(
+            fn=_ai_send,
+            inputs=[ai_provider, ai_endpoint, ai_model, ai_api_key, ai_api_version, ai_temperature, ai_chat, ai_msg],
+            outputs=[ai_chat, ai_status],
+        )
+        ai_clear_btn.click(fn=_ai_clear, inputs=[], outputs=[ai_chat, ai_status])
 
         # Preset browser wiring: load & preview rfxgen presets.
         pb_load_btn.click(fn=lambda k: gr.update(value=str(k)), inputs=[pb_keys], outputs=[rfxgen_preset])
