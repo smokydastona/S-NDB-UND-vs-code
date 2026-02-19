@@ -11,20 +11,26 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot ".."))
 
 function Invoke-BackendBuild {
-  Write-Host "[build_windows_app] Building backend (PyInstaller)..."
+  param(
+    [string]$PythonVersion,
+    [string]$Version,
+    [switch]$Clean
+  )
 
-  $args = @()
-  if ($Clean) { $args += "-Clean" }
-  if ($Version -and $Version.Trim().Length -gt 0) { $args += @("-Version", $Version.Trim()) }
-  if ($PythonVersion -and $PythonVersion.Trim().Length -gt 0) { $args += @("-PythonVersion", $PythonVersion.Trim()) }
+  Write-Output "[build_windows_app] Building backend (PyInstaller)..."
+
+  $backendCliParams = @()
+  if ($Clean) { $backendCliParams += "-Clean" }
+  if ($Version -and $Version.Trim().Length -gt 0) { $backendCliParams += @("-Version", $Version.Trim()) }
+  if ($PythonVersion -and $PythonVersion.Trim().Length -gt 0) { $backendCliParams += @("-PythonVersion", $PythonVersion.Trim()) }
 
   $buildExe = Join-Path $repoRoot "scripts\build_exe.ps1"
-  & powershell -ExecutionPolicy Bypass -File $buildExe @args
+  & powershell -ExecutionPolicy Bypass -File $buildExe @backendCliParams
   if ($LASTEXITCODE -ne 0) { throw "Backend build failed (exit $LASTEXITCODE)." }
 }
 
 function Invoke-ElectronBuild {
-  Write-Host "[build_windows_app] Building Electron installer (electron-builder)..."
+  Write-Output "[build_windows_app] Building Electron installer (electron-builder)..."
 
   Push-Location (Join-Path $repoRoot "electron")
   try {
@@ -39,7 +45,7 @@ function Invoke-ElectronBuild {
     npm run dist
     if ($LASTEXITCODE -ne 0) { throw "npm run dist failed (exit $LASTEXITCODE)." }
 
-    Write-Host "[build_windows_app] Output folder: electron\\dist\\"
+    Write-Output "[build_windows_app] Output folder: electron\\dist\\"
   }
   finally {
     Pop-Location
@@ -49,18 +55,18 @@ function Invoke-ElectronBuild {
 Push-Location $repoRoot
 try {
   if (-not $SkipBackend) {
-    Invoke-BackendBuild
+    Invoke-BackendBuild -PythonVersion $PythonVersion -Version $Version -Clean:$Clean
   } else {
-    Write-Host "[build_windows_app] Skipping backend build (-SkipBackend)."
+    Write-Output "[build_windows_app] Skipping backend build (-SkipBackend)."
   }
 
   if (-not $SkipElectron) {
     Invoke-ElectronBuild
   } else {
-    Write-Host "[build_windows_app] Skipping Electron build (-SkipElectron)."
+    Write-Output "[build_windows_app] Skipping Electron build (-SkipElectron)."
   }
 
-  Write-Host "[build_windows_app] Done."
+  Write-Output "[build_windows_app] Done."
 }
 finally {
   Pop-Location

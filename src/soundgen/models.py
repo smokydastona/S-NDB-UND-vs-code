@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -125,6 +126,19 @@ def run_models(argv: list[str] | None = None) -> int:
     sub_defaults = sub.add_parser("defaults", help="List default model ids used by built-in engines.")
     sub_defaults.set_defaults(_cmd="defaults")
 
+    sub_missing = sub.add_parser("missing", help="List default models that are not yet cached.")
+    sub_missing.add_argument(
+        "--token",
+        default=None,
+        help="HF token (optional). You can also set HF_TOKEN/HUGGINGFACE_HUB_TOKEN.",
+    )
+    sub_missing.add_argument(
+        "--json",
+        action="store_true",
+        help="Print a single JSON line (machine-readable) of the missing model ids.",
+    )
+    sub_missing.set_defaults(_cmd="missing")
+
     sub_dl = sub.add_parser("download", help="Download a Hugging Face model snapshot into the app cache.")
     sub_dl.add_argument("repo_id", help="Hugging Face repo id, e.g. cvssp/audioldm2")
     sub_dl.add_argument(
@@ -158,6 +172,18 @@ def run_models(argv: list[str] | None = None) -> int:
     if cmd == "defaults":
         for m in _DEFAULT_MODELS:
             print(m)
+        return 0
+
+    if cmd == "missing":
+        token = args.token
+        if not (token and str(token).strip()):
+            token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+        missing = missing_default_models(token=(str(token) if token else None))
+        if bool(getattr(args, "json", False)):
+            print(json.dumps(missing, ensure_ascii=True), flush=True)
+        else:
+            for rid in missing:
+                print(rid)
         return 0
 
     if cmd == "download":

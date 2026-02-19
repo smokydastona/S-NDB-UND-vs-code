@@ -9,6 +9,11 @@ let isQuitting = false;
 let backendLogStream = null;
 let backendRestartTimer = null;
 
+function normalizeStreamingText(chunk) {
+  // Progress bars often use CR without LF.
+  return String(chunk || '').replace(/\r/g, '\n');
+}
+
 function getLogDir() {
   const logDir = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
@@ -59,6 +64,172 @@ function resolveBackendCommand() {
 
   // Fallback: whatever is on PATH.
   return { cmd: 'python', argsPrefix: [] };
+}
+
+function resolveBackendRunner() {
+  const repoRoot = path.resolve(__dirname, '..');
+  const dataDir = app.getPath('userData');
+
+  if (app.isPackaged) {
+    const bundled = resolveBundledBackendExe();
+    if (!bundled) {
+      throw new Error('Bundled backend EXE not found in resources. Did you run `npm run prep-backend` before building?');
+    }
+    return {
+      cmd: bundled.exePath,
+      argsPrefix: [],
+      cwd: path.dirname(bundled.exePath),
+      env: { ...process.env, SOUNDGEN_DATA_DIR: dataDir, GRADIO_ANALYTICS_ENABLED: 'False' }
+    };
+  }
+
+  const resolved = resolveBackendCommand();
+  return {
+    cmd: resolved.cmd,
+    argsPrefix: ['-m', 'soundgen.app'],
+    cwd: repoRoot,
+    env: { ...process.env, SOUNDGEN_DATA_DIR: dataDir, GRADIO_ANALYTICS_ENABLED: 'False' }
+  };
+}
+
+function runBackendOnce(args, { timeoutMs = 0 } = {}) {
+  const runner = resolveBackendRunner();
+  const fullArgs = [...(runner.argsPrefix || []), ...(args || [])];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(runner.cmd, fullArgs, {
+      cwd: runner.cwd,
+      env: runner.env,
+      windowsHide: true
+    });
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.setEncoding('utf8');
+    proc.stderr.setEncoding('utf8');
+    proc.stdout.on('data', (c) => { stdout += normalizeStreamingText(c); });
+    proc.stderr.on('data', (c) => { stderr += normalizeStreamingText(c); });
+
+    let timer = null;
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try { proc.kill(); } catch {}
+        reject(new Error('Timed out running backend command.'));
+      }, timeoutMs);
+    }
+
+    proc.on('exit', (code) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) return resolve({ stdout, stderr });
+      const err = new Error(`Backend command failed (exit ${code}).`);
+      err.stdout = stdout;
+      err.stderr = stderr;
+      reject(err);
+    });
+  });
+}
+
+function createProgressWindow() {
+  const win = new BrowserWindow({
+    width: 760,
+    height: 520,
+    title: 'SÖNDBÖUND — Downloading models',
+    show: true,
+    webPreferences: { sandbox: true }
+  });
+
+  const html = `<!doctype html><html><head><meta charset="utf-8" />
+  <title>Downloading models</title>
+  <style>body{margin:12px;font-family:Consolas,monospace;white-space:pre-wrap;}#log{white-space:pre-wrap;}</style>
+  </head><body><div id="log">Preparing downloads...\n</div></body></html>`;
+
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+  async function append(text) {
+    if (!win || win.isDestroyed()) return;
+    const payload = JSON.stringify(String(text || ''));
+    try {
+      await win.webContents.executeJavaScript(
+        `(function(){var el=document.getElementById('log'); el.textContent += ${payload}; window.scrollTo(0, document.body.scrollHeight);})()`
+      );
+    } catch {
+      // best-effort
+    }
+  }
+
+  return { win, append };
+}
+
+async function ensureModelsReady() {
+  const skip = String(process.env.SOUNDGEN_SKIP_MODEL_CHECK || '').trim();
+  const allowDev = String(process.env.SOUNDGEN_MODEL_CHECK_IN_DEV || '').trim() === '1';
+  if (skip === '1') return;
+  if (!app.isPackaged && !allowDev) return;
+
+  let missing = [];
+  try {
+    const res = await runBackendOnce(['models', 'missing', '--json'], { timeoutMs: 60000 });
+    const t = String(res.stdout || '').trim();
+    missing = t ? JSON.parse(t) : [];
+  } catch (e) {
+    logLine('[models] missing-check failed (continuing): ' + (e && e.stack ? e.stack : e));
+    return;
+  }
+
+  if (!Array.isArray(missing) || missing.length === 0) return;
+
+  const msg =
+    'SÖNDBÖUND did not find the default AI models in its cache.\n\n' +
+    'You can download them now (recommended) or skip for now.\n\n' +
+    'Missing:\n' + missing.map((m) => `  - ${m}`).join('\n');
+
+  const choice = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Download', 'Skip'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Download models?',
+    message: 'Models not cached',
+    detail: msg
+  });
+
+  if (choice.response !== 0) return;
+
+  const { win, append } = createProgressWindow();
+  try {
+    for (const rid of missing) {
+      await append(`\n== Downloading ${rid} ==\n`);
+
+      const runner = resolveBackendRunner();
+      const fullArgs = [...(runner.argsPrefix || []), 'models', 'download', String(rid)];
+      const proc = spawn(runner.cmd, fullArgs, {
+        cwd: runner.cwd,
+        env: runner.env,
+        windowsHide: true
+      });
+
+      proc.stdout.setEncoding('utf8');
+      proc.stderr.setEncoding('utf8');
+      proc.stdout.on('data', async (c) => { await append(normalizeStreamingText(c)); });
+      proc.stderr.on('data', async (c) => { await append(normalizeStreamingText(c)); });
+
+      const exitCode = await new Promise((resolve) => proc.on('exit', (code) => resolve(code)));
+      if (exitCode !== 0) {
+        await append(`\n[error] download failed (exit ${exitCode})\n`);
+        await dialog.showMessageBox({
+          type: 'error',
+          buttons: ['OK'],
+          title: 'Model download failed',
+          message: `Failed to download ${rid}`,
+          detail: `Exit code: ${exitCode}. You can retry later via the CLI: SÖNDBÖUND.exe models download ${rid}`
+        });
+        break;
+      }
+      await append(`\n[ok] downloaded ${rid}\n`);
+    }
+  } finally {
+    try { if (win && !win.isDestroyed()) win.close(); } catch {}
+  }
 }
 
 function startBackend() {
@@ -220,6 +391,7 @@ async function createWindow() {
     }
   });
 
+  await ensureModelsReady();
   const url = await startBackend();
   await mainWindow.loadURL(url);
   mainWindow.show();

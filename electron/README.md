@@ -39,6 +39,19 @@ npm run dev
 
 Backend logs are written under the Electron user data folder (see `electron-backend.log`).
 
+## Models on first run
+
+When running as a packaged app, Electron checks whether the default Hugging Face models are already cached.
+
+- If models are missing, it prompts to download them and shows a simple progress window.
+- Downloads go into the per-user app cache (Electron `userData` → `cache/hf/...`) via `SOUNDGEN_DATA_DIR`.
+
+You can disable the prompt (for CI or debugging) by setting:
+
+```powershell
+$env:SOUNDGEN_SKIP_MODEL_CHECK = "1"
+```
+
 ## Build a self-contained installer (no Python required)
 
 This bundles the existing PyInstaller backend (`dist/SÖNDBÖUND/`) into the Electron app as `extraResources`, then produces a Windows installer.
