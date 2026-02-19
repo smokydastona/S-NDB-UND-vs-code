@@ -41,6 +41,9 @@
     ],
     "win": {
       "icon": "build/icon.ico",
+      "publisherName": [
+        "SmokyDaStona"
+      ],
       "target": [
         "nsis"
       ],
@@ -53,7 +56,8 @@
       "createStartMenuShortcut": true
     },
     "appx": {
-      "applicationId": "Sondbound"
+      "applicationId": "Sondbound",
+      "publisherDisplayName": "SmokyDaStona"
     },
     "publish": [
       {
