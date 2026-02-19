@@ -1,10 +1,47 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import os
 import socket
+import sys
+import traceback
+from pathlib import Path
 
 from .web import build_demo
+
+
+def _desktop_log_path() -> Path:
+    if sys.platform == "win32":
+        la = str(os.environ.get("LOCALAPPDATA") or "").strip()
+        base = (Path(la) if la else (Path.home() / "AppData" / "Local")) / "SÖNDBÖUND"
+    else:
+        base = Path.home() / ".söndböund"
+    return base / "desktop.log"
+
+
+def _write_desktop_log(text: str) -> None:
+    try:
+        p = _desktop_log_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.datetime.now().isoformat(timespec="seconds")
+        with p.open("a", encoding="utf-8") as f:
+            f.write(f"[{stamp}] {text}\n")
+    except Exception:
+        return
+
+
+def _hide_console_window_windows_best_effort() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    except Exception:
+        return
 
 
 def _pick_free_port(host: str) -> int:
@@ -75,17 +112,43 @@ def run_desktop(argv: list[str] | None = None) -> int:
     preferred_gui = str(os.environ.get("SOUNDGEN_DESKTOP_GUI", "")).strip().lower() or None
     gui_candidates = [preferred_gui, "edgechromium", "mshtml", None]
     last_error: Exception | None = None
+
+    hide_on_ready = str(os.environ.get("SOUNDGEN_HIDE_CONSOLE_ON_READY", "")).strip() == "1"
+    if hide_on_ready:
+        _write_desktop_log("console_hide=on_ready")
+
     for gui in gui_candidates:
         if gui in {"", "none"}:
             gui = None
         try:
+            _write_desktop_log(f"webview_start gui={gui!r} url={local_url}")
+
+            # Hide console only after the GUI backend is initialized.
+            func = _hide_console_window_windows_best_effort if hide_on_ready else None
+
             if gui is None:
-                webview.start()
+                if func is None:
+                    webview.start()
+                else:
+                    try:
+                        webview.start(func=func)
+                    except TypeError:
+                        # Older pywebview versions may not support func=.
+                        webview.start()
             else:
-                webview.start(gui=gui)
+                if func is None:
+                    webview.start(gui=gui)
+                else:
+                    try:
+                        webview.start(gui=gui, func=func)
+                    except TypeError:
+                        webview.start(gui=gui)
             last_error = None
             break
         except Exception as e:
+            _write_desktop_log(
+                f"webview_failed gui={gui!r}: {str(e).strip() or e.__class__.__name__}\n{traceback.format_exc()}"
+            )
             last_error = e
             continue
 

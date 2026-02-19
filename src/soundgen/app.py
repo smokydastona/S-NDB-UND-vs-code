@@ -7,6 +7,20 @@ from pathlib import Path
 import sys
 
 
+def _launched_from_interactive_terminal() -> bool:
+    try:
+        return bool(getattr(sys.stdout, "isatty", lambda: False)()) or bool(getattr(sys.stderr, "isatty", lambda: False)())
+    except Exception:
+        return False
+
+
+def _should_hide_console_window_windows() -> bool:
+    if sys.platform != "win32":
+        return False
+    # If launched from an interactive terminal, do not hide the console.
+    return not _launched_from_interactive_terminal()
+
+
 def _hide_console_window_windows() -> None:
     """Hide the console window when launching GUI modes on Windows.
 
@@ -18,13 +32,8 @@ def _hide_console_window_windows() -> None:
     if sys.platform != "win32":
         return
 
-    # If launched from an interactive terminal, do not hide the console.
-    # This keeps `SÖNDBÖUND.exe web` / `desktop` debuggable.
-    try:
-        if bool(getattr(sys.stdout, "isatty", lambda: False)()) or bool(getattr(sys.stderr, "isatty", lambda: False)()):
-            return
-    except Exception:
-        pass
+    if not _should_hide_console_window_windows():
+        return
 
     try:
         import ctypes
@@ -97,7 +106,14 @@ def _run_gui_mode(fn, *, mode_name: str, argv: list[str]) -> int:
     """Run a GUI-ish mode safely (console may be hidden on Windows)."""
 
     _write_startup_log(f"mode={mode_name} argv={argv!r}")
-    _hide_console_window_windows()
+
+    # Desktop UI: hide the console only after the embedded window is actually up.
+    # The desktop launcher will act on this env var when the GUI backend is ready.
+    if mode_name == "Desktop UI" and _should_hide_console_window_windows():
+        os.environ["SOUNDGEN_HIDE_CONSOLE_ON_READY"] = "1"
+    else:
+        os.environ.pop("SOUNDGEN_HIDE_CONSOLE_ON_READY", None)
+        _hide_console_window_windows()
     try:
         return int(fn())
     except SystemExit as e:
