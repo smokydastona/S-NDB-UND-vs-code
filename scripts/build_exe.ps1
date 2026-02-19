@@ -72,6 +72,62 @@ $commonArgs = @(
   "--paths", "src"
 )
 
+# Embed Windows EXE metadata (CompanyName, FileDescription, etc.).
+# Note: The Windows Explorer "Publisher" column is driven by code signing;
+# this sets the file's version info strings (CompanyName) to match.
+$versionInfoFile = Join-Path $WorkDir "version_info.txt"
+$verInt = 0
+try {
+  $tmp = 0
+  $verStr = ""
+  if ($null -ne $Version) { $verStr = [string]$Version }
+  if ([int]::TryParse($verStr.Trim(), [ref]$tmp)) {
+    if ($tmp -ge 0 -and $tmp -le 65535) {
+      $verInt = $tmp
+    }
+  }
+} catch {
+  $verInt = 0
+}
+
+$versionInfo = @"
+# UTF-8
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 0, $verInt, 0),
+    prodvers=(0, 0, $verInt, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',
+        [
+          StringStruct('CompanyName', 'SmokyDaStona'),
+          StringStruct('FileDescription', 'SÖNDBÖUND'),
+          StringStruct('InternalName', 'SÖNDBÖUND'),
+          StringStruct('OriginalFilename', 'SÖNDBÖUND.exe'),
+          StringStruct('ProductName', 'SÖNDBÖUND'),
+          StringStruct('LegalCopyright', 'Copyright © SmokyDaStona')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"@
+
+if (!(Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir | Out-Null }
+Set-Content -Path $versionInfoFile -Value $versionInfo -Encoding utf8
+if (Test-Path $versionInfoFile) {
+  $commonArgs += @("--version-file", $versionInfoFile)
+}
+
 # Optional app icon (Windows): PyInstaller expects .ico
 $iconPng = ".examples/icon.png"
 $iconIco = Join-Path $WorkDir "app.ico"
