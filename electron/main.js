@@ -71,6 +71,50 @@ function setupCrashDumpsAndReporting() {
   }
 }
 
+function pluginhostExePath() {
+  // Dev default: built native helper under native/pluginhost/build/Release
+  // In packaged app we can vendor it elsewhere; keep this flexible.
+  const candidates = [
+    path.join(__dirname, '..', 'native', 'pluginhost', 'build', 'Release', 'soundgen_pluginhost.exe'),
+    path.join(__dirname, '..', 'native', 'pluginhost', 'build', 'soundgen_pluginhost.exe'),
+    path.join(__dirname, '..', 'native', 'pluginhost', 'build', 'Debug', 'soundgen_pluginhost.exe'),
+    path.join(process.resourcesPath || '', 'soundgen_pluginhost.exe')
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate)) return candidate;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function runPluginhost(args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const exe = pluginhostExePath();
+    if (!exe) {
+      reject(new Error('soundgen_pluginhost.exe not found. Build native/pluginhost first.'));
+      return;
+    }
+
+    const child = spawn(exe, args, {
+      windowsHide: true,
+      cwd: opts.cwd || process.cwd()
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d.toString('utf8')));
+    child.stderr.on('data', (d) => (stderr += d.toString('utf8')));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error((stderr || stdout || '').trim() || `pluginhost exited with code ${code}`));
+    });
+  });
+}
+
 function isTrayEnabled() {
   const raw = String(process.env.SOUNDGEN_TRAY || '').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
@@ -682,6 +726,46 @@ function registerEditorIpc() {
     });
     if (res.canceled || !res.filePath) return null;
     return String(res.filePath);
+  });
+
+  ipcMain.handle('editor:pickClapPluginDialog', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Load CLAP plugin',
+      properties: ['openFile'],
+      filters: [{ name: 'CLAP plugin', extensions: ['clap'] }]
+    });
+    if (canceled || !filePaths?.length) return null;
+    return String(filePaths[0]);
+  });
+
+  ipcMain.handle('editor:pickLv2BundleDialog', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Load LV2 bundle',
+      properties: ['openDirectory']
+    });
+    if (canceled || !filePaths?.length) return null;
+    return String(filePaths[0]);
+  });
+
+  ipcMain.handle('editor:clapRenderPreview', async (_evt, payload) => {
+    const inWav = String(payload?.inWav || '');
+    const outWav = String(payload?.outWav || '');
+    const pluginPath = String(payload?.pluginPath || '');
+    if (!inWav || !outWav || !pluginPath) {
+      throw new Error('clapRenderPreview requires {inWav,outWav,pluginPath}');
+    }
+
+    await runPluginhost([
+      'clap-render',
+      '--plugin',
+      pluginPath,
+      '--in',
+      inWav,
+      '--out',
+      outWav
+    ]);
+
+    return { outWav };
   });
 
   ipcMain.handle('editor:readFileBase64', async (_ev, filePath) => {

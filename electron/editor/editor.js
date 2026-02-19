@@ -4,6 +4,9 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   openBtn: $("openBtn"),
+  loadClapBtn: $("loadClapBtn"),
+  loadLv2Btn: $("loadLv2Btn"),
+  pluginPreviewChk: $("pluginPreviewChk"),
   trimBtn: $("trimBtn"),
   cutBtn: $("cutBtn"),
   copyBtn: $("copyBtn"),
@@ -35,6 +38,17 @@ const state = {
   currentWavPath: null,
   audioBuffer: null,
   samples: null,
+  plugins: {
+    clapPath: null,
+    lv2BundlePath: null,
+  },
+  preview: {
+    forWavPath: null,
+    wavPath: null,
+    audioBuffer: null,
+    samples: null,
+    rendering: false,
+  },
   viewStart: 0,
   viewEnd: 0,
   cursor: 0,
@@ -62,6 +76,29 @@ function setHintIfIdle() {
   setStatus('Tip: Alt+drag scrub | Shift+drag pan | Wheel zoom | Drag select | Space play');
 }
 
+function shortPath(p) {
+  return String(p || '').split(/[\\/]/).filter(Boolean).slice(-1)[0] || String(p || '');
+}
+
+function isPluginPreviewEnabled() {
+  return !!(ui.pluginPreviewChk && ui.pluginPreviewChk.checked);
+}
+
+function invalidatePluginPreview() {
+  state.preview.forWavPath = null;
+  state.preview.wavPath = null;
+  state.preview.audioBuffer = null;
+  state.preview.samples = null;
+  state.preview.rendering = false;
+}
+
+function derivePreviewOutPath(inWavPath) {
+  const p = String(inWavPath || '');
+  if (!p) return '';
+  if (p.toLowerCase().endsWith('.wav')) return p.replace(/\.wav$/i, '.preview.wav');
+  return p + '.preview.wav';
+}
+
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -76,6 +113,8 @@ function selectionRange() {
 
 function enableEditing(enabled) {
   for (const b of [
+    ui.loadClapBtn,
+    ui.loadLv2Btn,
     ui.trimBtn,
     ui.cutBtn,
     ui.copyBtn,
@@ -94,8 +133,11 @@ function enableEditing(enabled) {
     ui.playBtn,
     ui.stopBtn
   ]) {
+    if (!b) continue;
     b.disabled = !enabled;
   }
+
+  if (ui.pluginPreviewChk) ui.pluginPreviewChk.disabled = !enabled;
 }
 
 function fmtTime(samples) {
@@ -123,7 +165,7 @@ function base64ToArrayBuffer(b64) {
   return bytes.buffer;
 }
 
-async function loadAudioFromWavPath(wavPath) {
+async function decodeWavToMono(wavPath) {
   const b64 = await soundgenEditor.readFileBase64(wavPath);
   const buf = base64ToArrayBuffer(b64);
   if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -142,9 +184,15 @@ async function loadAudioFromWavPath(wavPath) {
     }
   }
 
+  return { decoded, mono, sampleRate: decoded.sampleRate };
+}
+
+async function loadAudioFromWavPath(wavPath) {
+  const { decoded, mono, sampleRate } = await decodeWavToMono(wavPath);
+
   state.audioBuffer = decoded;
   state.samples = mono;
-  state.sampleRate = decoded.sampleRate;
+  state.sampleRate = sampleRate;
   state.viewStart = 0;
   state.viewEnd = mono.length;
   state.cursor = 0;
@@ -153,6 +201,62 @@ async function loadAudioFromWavPath(wavPath) {
   resizeCanvas();
   draw();
   updateTimeLabel();
+}
+
+async function loadPreviewFromWavPath(wavPath, forWavPath) {
+  const { decoded, mono } = await decodeWavToMono(wavPath);
+  state.preview.forWavPath = String(forWavPath || '');
+  state.preview.wavPath = String(wavPath || '');
+  state.preview.audioBuffer = decoded;
+  state.preview.samples = mono;
+}
+
+async function ensurePluginPreviewReady() {
+  if (!isPluginPreviewEnabled()) return false;
+  if (!state.currentWavPath) return false;
+  if (state.preview.rendering) return false;
+
+  if (state.plugins.lv2BundlePath) {
+    setStatus('LV2 selected, but LV2 preview is not implemented yet.');
+    return false;
+  }
+
+  if (!state.plugins.clapPath) {
+    setStatus('Preview enabled, but no CLAP plugin loaded.');
+    return false;
+  }
+
+  if (state.preview.audioBuffer && state.preview.forWavPath === state.currentWavPath) {
+    return true;
+  }
+
+  const outWav = derivePreviewOutPath(state.currentWavPath);
+  if (!outWav) return false;
+
+  state.preview.rendering = true;
+  try {
+    setStatus(`Rendering CLAP preview (${shortPath(state.plugins.clapPath)})…`);
+    await soundgenEditor.clapRenderPreview({
+      inWav: state.currentWavPath,
+      outWav,
+      pluginPath: state.plugins.clapPath,
+    });
+    await loadPreviewFromWavPath(outWav, state.currentWavPath);
+    setStatus('');
+    setHintIfIdle();
+    return true;
+  } catch (e) {
+    invalidatePluginPreview();
+    setStatus('Plugin preview failed: ' + String(e && e.message ? e.message : e));
+    return false;
+  } finally {
+    state.preview.rendering = false;
+  }
+}
+
+function activePlaybackBuffer() {
+  if (isPluginPreviewEnabled() && state.preview.audioBuffer) return state.preview.audioBuffer;
+  return state.audioBuffer;
 }
 
 function resizeCanvas() {
@@ -269,38 +373,48 @@ async function scrubPreviewAt(sampleIndex) {
   stopScrub();
 
   const sr = state.sampleRate || 1;
-  const t = clamp(sampleIndex / sr, 0, state.audioBuffer.duration);
+  const buf = activePlaybackBuffer() || state.audioBuffer;
+  const t = clamp(sampleIndex / sr, 0, buf.duration);
   const dur = 0.045;
 
   const src = state.audioCtx.createBufferSource();
-  src.buffer = state.audioBuffer;
+  src.buffer = buf;
   src.connect(state.audioCtx.destination);
   src.onended = () => { if (state.scrubSource === src) state.scrubSource = null; };
   state.scrubSource = src;
 
   try {
     // duration form can throw if duration <= 0 or start is at EOF.
-    src.start(0, t, Math.max(0.01, Math.min(dur, Math.max(0, state.audioBuffer.duration - t))));
+    src.start(0, t, Math.max(0.01, Math.min(dur, Math.max(0, buf.duration - t))));
   } catch {
     try { src.start(0, t); } catch {}
   }
 }
 
-function playFromCursor() {
+async function playFromCursor() {
   if (!state.audioCtx || !state.audioBuffer) return;
   stopPlayback();
 
+  // If preview is enabled, attempt to render it once per snapshot.
+  try {
+    await ensurePluginPreviewReady();
+  } catch {
+    // best-effort
+  }
+
+  const buf = activePlaybackBuffer() || state.audioBuffer;
+
   const src = state.audioCtx.createBufferSource();
-  src.buffer = state.audioBuffer;
+  src.buffer = buf;
 
   const sr = state.sampleRate || 1;
-  const startTime = clamp(state.cursor / sr, 0, state.audioBuffer.duration);
+  const startTime = clamp(state.cursor / sr, 0, buf.duration);
 
   const sel = selectionRange();
   const loop = ui.loopChk.checked && !!sel;
   if (loop) {
-    const ls = clamp(sel[0] / sr, 0, state.audioBuffer.duration);
-    const le = clamp(sel[1] / sr, 0, state.audioBuffer.duration);
+    const ls = clamp(sel[0] / sr, 0, buf.duration);
+    const le = clamp(sel[1] / sr, 0, buf.duration);
     if (le > ls) {
       src.loop = true;
       src.loopStart = ls;
@@ -357,8 +471,12 @@ function renderHistory(items) {
 async function refreshFromResp(resp) {
   if (!resp) return;
 
+  const prevWav = state.currentWavPath;
   state.sampleRate = resp.sample_rate;
   state.currentWavPath = resp.current_wav;
+  if (prevWav && prevWav !== state.currentWavPath) {
+    invalidatePluginPreview();
+  }
 
   enableEditing(true);
 
@@ -411,6 +529,53 @@ async function applyOp(type, args = {}) {
 }
 
 ui.openBtn.onclick = () => doOpen();
+
+if (ui.loadClapBtn) {
+  ui.loadClapBtn.onclick = async () => {
+    try {
+      const p = await soundgenEditor.pickClapPluginDialog();
+      if (!p) return;
+      state.plugins.clapPath = p;
+      state.plugins.lv2BundlePath = null;
+      invalidatePluginPreview();
+      setStatus(`Loaded CLAP: ${shortPath(p)} (preview uses first plugin in library)`);
+    } catch (e) {
+      setStatus(String(e && e.message ? e.message : e));
+    }
+  };
+}
+
+if (ui.loadLv2Btn) {
+  ui.loadLv2Btn.onclick = async () => {
+    try {
+      const p = await soundgenEditor.pickLv2BundleDialog();
+      if (!p) return;
+      state.plugins.lv2BundlePath = p;
+      state.plugins.clapPath = null;
+      invalidatePluginPreview();
+      setStatus(`Loaded LV2: ${shortPath(p)} (preview not implemented yet)`);
+    } catch (e) {
+      setStatus(String(e && e.message ? e.message : e));
+    }
+  };
+}
+
+if (ui.pluginPreviewChk) {
+  ui.pluginPreviewChk.onchange = () => {
+    if (!isPluginPreviewEnabled()) {
+      setStatus('');
+      setHintIfIdle();
+      return;
+    }
+    if (state.plugins.clapPath) {
+      setStatus('Plugin preview enabled. Press Play to render preview.');
+    } else if (state.plugins.lv2BundlePath) {
+      setStatus('LV2 selected, but LV2 preview is not implemented yet.');
+    } else {
+      setStatus('Plugin preview enabled. Load a CLAP plugin to preview.');
+    }
+  };
+}
 ui.trimBtn.onclick = () => {
   const sel = selectionRange();
   if (!sel) return setStatus('Trim requires a selection.');
@@ -498,7 +663,7 @@ ui.exportBtn.onclick = async () => {
   }
 };
 
-ui.playBtn.onclick = () => playFromCursor();
+ui.playBtn.onclick = () => { playFromCursor().catch((e) => setStatus(String(e && e.message ? e.message : e))); };
 ui.stopBtn.onclick = () => stopPlayback();
 
 window.addEventListener('resize', () => {
@@ -624,7 +789,7 @@ ui.canvas.addEventListener('wheel', (ev) => {
 window.addEventListener('keydown', (ev) => {
   if (ev.code === 'Space') {
     ev.preventDefault();
-    playFromCursor();
+    playFromCursor().catch(() => {});
     return;
   }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {

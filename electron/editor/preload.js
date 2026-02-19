@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld('soundgenEditor', {
   openWavDialog: () => ipcRenderer.invoke('editor:openWavDialog'),
   saveWavDialog: () => ipcRenderer.invoke('editor:saveWavDialog'),
 
+  pickClapPluginDialog: () => ipcRenderer.invoke('editor:pickClapPluginDialog'),
+  pickLv2BundleDialog: () => ipcRenderer.invoke('editor:pickLv2BundleDialog'),
+  clapRenderPreview: (payload) => ipcRenderer.invoke('editor:clapRenderPreview', payload || {}),
+
   editopsInit: (inPath) => ipcRenderer.invoke('editor:editopsInit', String(inPath || '')),
   editopsInfo: (sessionId) => ipcRenderer.invoke('editor:editopsInfo', String(sessionId || '')),
   editopsOp: (payload) => ipcRenderer.invoke('editor:editopsOp', payload || {}),
