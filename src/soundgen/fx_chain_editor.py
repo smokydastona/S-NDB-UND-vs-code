@@ -27,7 +27,9 @@ def _parse_value(s: str) -> Any:
     if t == "":
         return ""
     try:
-        return json.loads(t)
+        from .json_utils import loads_json_lenient
+
+        return loads_json_lenient(t, context="FX chain editor value")
     except Exception:
         pass
     # fall back to raw string

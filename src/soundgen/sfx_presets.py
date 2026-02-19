@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .json_utils import JsonParseError, load_json_file_lenient
+
 
 @dataclass(frozen=True)
 class SfxPreset:
@@ -105,8 +107,12 @@ _render_prompt_template = render_prompt_template
 
 def load_sfx_preset_library(path: str | Path) -> dict[str, SfxPreset]:
     path = Path(path)
-    with path.open("r", encoding="utf-8") as f:
-        obj = json.load(f)
+    try:
+        obj = load_json_file_lenient(path, context=f"SFX preset library JSON file: {path}")
+    except JsonParseError as e:
+        raise ValueError(str(e)) from e
+    if not isinstance(obj, dict):
+        raise ValueError(f"Invalid sfx preset library (expected object): {path}")
 
     presets_raw = obj.get("presets")
     if not isinstance(presets_raw, list):
