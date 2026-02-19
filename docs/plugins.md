@@ -2,6 +2,10 @@
 
 S‑NDB‑UND supports **engine plugins** so you (or the community) can add new generation backends without editing core files.
 
+If you’re looking for **audio effect plugins** (EQ/compressor/reverb style processing) via **CLAP/LV2**, see:
+
+- [Audio FX plugins (CLAP + LV2)](audio_fx_plugins.md)
+
 ## What plugins can do
 
 - Register **new engines** that output mono audio (NumPy) + sample rate.
