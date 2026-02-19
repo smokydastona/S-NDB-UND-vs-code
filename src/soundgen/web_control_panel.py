@@ -5,6 +5,7 @@ import json
 import math
 import os
 import subprocess
+import shutil
 import sys
 import uuid
 import zipfile
@@ -15,7 +16,13 @@ from typing import Any
 import gradio as gr
 import numpy as np
 
-from .ai_assistant import AIChatError, chat_once
+from .ai_assistant import (
+    AIChatError,
+    chat_once,
+    ollama_list_models,
+    ollama_pull_model,
+    ollama_reachable,
+)
 from .engine_registry import available_engines, generate_wav
 from .io_utils import convert_audio_with_ffmpeg, read_wav_mono, write_wav
 from .postprocess import PostProcessParams, post_process_audio
@@ -1202,6 +1209,7 @@ def build_demo_control_panel() -> gr.Blocks:
                     ai_api_key = gr.Textbox(value="", label="API key (cloud only)", type="password")
                     ai_api_version = gr.Textbox(value="2024-02-15-preview", label="Azure API version (Azure only)")
                     ai_temperature = gr.Slider(0.0, 1.0, value=0.2, step=0.05, label="Temperature")
+                    ai_setup_btn = gr.Button("Setup local Copilot (Ollama)")
 
                 ai_chat = gr.Chatbot(label="Chat", height=360)
                 ai_msg = gr.Textbox(value="", label="Message")
@@ -1360,7 +1368,87 @@ def build_demo_control_panel() -> gr.Blocks:
         def _ai_clear():
             return [], ""
 
+        def _run_winget_install_from_ui(package_id: str) -> bool:
+            if sys.platform != "win32":
+                return False
+            if not bool(shutil.which("winget") or shutil.which("winget.exe")):
+                return False
+            cmd = [
+                "winget",
+                "install",
+                "-e",
+                "--id",
+                str(package_id),
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+            ]
+            try:
+                creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+                subprocess.Popen(cmd, creationflags=creationflags)
+                return True
+            except Exception:
+                return False
+
+        def _ai_setup_local(endpoint: str, model_or_deployment: str):
+            base = str(endpoint or "").strip() or "http://localhost:11434"
+            model_name = str(model_or_deployment or "").strip() or "llama3.2"
+
+            yield _pct_status(0, "checking Ollama")
+            if not ollama_reachable(base_url=base, timeout_s=2.5):
+                # Best-effort: offer a winget install on Windows.
+                if sys.platform == "win32":
+                    started = _run_winget_install_from_ui("Ollama.Ollama")
+                    if started:
+                        yield _pct_status(
+                            5,
+                            "started Ollama installer via winget — finish install, then relaunch and click setup again",
+                        )
+                        return
+                yield _pct_status(
+                    5,
+                    "Ollama not reachable. Install Ollama and ensure it's running (tip: open Ollama once), then retry.",
+                )
+                return
+
+            yield _pct_status(10, "listing local models")
+            try:
+                models = ollama_list_models(base_url=base, timeout_s=10.0)
+            except Exception as e:
+                yield _pct_status(10, f"failed to query models: {e}")
+                return
+
+            if model_name in models:
+                yield _pct_status(100, f"ready: {model_name} is installed")
+                return
+
+            yield _pct_status(15, f"downloading model: {model_name}")
+            try:
+                for pct, status in ollama_pull_model(base_url=base, model=model_name):
+                    # Map pull progress into 15..95 so we can finish with a clean 100%.
+                    mapped = 15 + int(round((max(0, min(100, int(pct))) / 100.0) * 80.0))
+                    yield _pct_status(mapped, status)
+            except Exception as e:
+                yield _pct_status(15, f"pull failed: {e}")
+                return
+
+            yield _pct_status(98, "verifying install")
+            try:
+                models2 = ollama_list_models(base_url=base, timeout_s=10.0)
+                if model_name not in models2:
+                    yield _pct_status(98, f"model not found after pull: {model_name}")
+                    return
+            except Exception as e:
+                yield _pct_status(98, f"verify failed: {e}")
+                return
+            yield _pct_status(100, f"ready: installed {model_name}")
+
         ai_provider.change(fn=_ai_defaults, inputs=[ai_provider], outputs=[ai_endpoint, ai_model, ai_api_version])
+
+        ai_setup_btn.click(
+            fn=_ai_setup_local,
+            inputs=[ai_endpoint, ai_model],
+            outputs=[ai_status],
+        )
 
         ai_send_btn.click(
             fn=_ai_send,

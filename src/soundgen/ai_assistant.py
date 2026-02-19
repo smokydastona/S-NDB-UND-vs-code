@@ -110,6 +110,96 @@ def chat_ollama(
     return out
 
 
+def ollama_reachable(*, base_url: str, timeout_s: float = 2.5) -> bool:
+    base = str(base_url or "").strip() or "http://localhost:11434"
+    url = base.rstrip("/") + "/api/tags"
+    try:
+        resp = requests.get(url, timeout=timeout_s)
+        return resp.status_code < 400
+    except Exception:
+        return False
+
+
+def ollama_list_models(*, base_url: str, timeout_s: float = 5.0) -> list[str]:
+    base = str(base_url or "").strip() or "http://localhost:11434"
+    url = base.rstrip("/") + "/api/tags"
+    try:
+        resp = requests.get(url, timeout=timeout_s)
+    except Exception as e:
+        raise AIChatError(f"Ollama not reachable at {base}: {e}") from e
+    if resp.status_code >= 400:
+        raise _http_error("Ollama tags request failed", resp)
+    try:
+        data = resp.json()
+    except Exception as e:
+        raise AIChatError(f"Ollama tags returned non-JSON: {e}. { _safe_snip(resp.text) }") from e
+    models = []
+    for m in (data or {}).get("models") or []:
+        if isinstance(m, dict) and m.get("name"):
+            models.append(str(m["name"]))
+    return models
+
+
+def ollama_pull_model(
+    *,
+    base_url: str,
+    model: str,
+    timeout_s: float = 0.0,
+):
+    """Yield (pct, status) updates while pulling a model.
+
+    Uses Ollama's streaming JSON-lines response.
+    """
+
+    base = str(base_url or "").strip() or "http://localhost:11434"
+    url = base.rstrip("/") + "/api/pull"
+    payload: dict[str, Any] = {
+        "name": str(model or "").strip() or "llama3.2",
+        "stream": True,
+    }
+
+    try:
+        resp = requests.post(url, json=payload, stream=True, timeout=(10.0, None if timeout_s <= 0 else timeout_s))
+    except Exception as e:
+        raise AIChatError(f"Ollama pull request failed: {e}") from e
+
+    if resp.status_code >= 400:
+        raise _http_error("Ollama pull request failed", resp)
+
+    last_status = "pulling"
+    last_pct = 0
+    try:
+        for raw in resp.iter_lines(decode_unicode=True):
+            if not raw:
+                continue
+            try:
+                j = json.loads(raw)
+            except Exception:
+                continue
+            status = str(j.get("status") or last_status).strip() or last_status
+            last_status = status
+
+            completed = j.get("completed")
+            total = j.get("total")
+            pct = None
+            try:
+                if completed is not None and total:
+                    pct = int(round((float(completed) / float(total)) * 100.0))
+            except Exception:
+                pct = None
+
+            if pct is None:
+                pct = last_pct
+            pct = max(0, min(100, int(pct)))
+            last_pct = pct
+            yield pct, status
+    finally:
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+
 def chat_openai_compatible(
     *,
     base_url: str,

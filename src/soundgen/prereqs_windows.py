@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 
@@ -59,6 +60,28 @@ def _winget_available() -> bool:
 
 def _run_winget_install(package_id: str) -> bool:
     if not _winget_available():
+        return False
+
+
+def _run_command_new_console(cmd: list[str]) -> bool:
+    try:
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen(list(cmd), creationflags=creationflags)
+        _write_log(f"started command: {cmd!r}")
+        return True
+    except Exception as e:
+        _write_log(f"failed to start command {cmd!r}: {e}")
+        return False
+
+
+def _ollama_reachable(base_url: str = "http://localhost:11434") -> bool:
+    url = str(base_url or "").strip().rstrip("/") + "/api/tags"
+    try:
+        with urllib.request.urlopen(url, timeout=1.5) as resp:
+            return int(getattr(resp, "status", 200)) < 400
+    except Exception:
         return False
 
     cmd = [
@@ -155,7 +178,19 @@ def ensure_desktop_prereqs_first_run() -> None:
     missing_ffmpeg = _ffmpeg_missing()
     missing_webview2 = not _webview2_installed()
 
-    _write_log(f"first_run: ffmpeg_missing={missing_ffmpeg} webview2_missing={missing_webview2}")
+    # Optional: local Copilot via Ollama.
+    enable_ai = str(os.environ.get("SOUNDGEN_AI_PREREQS", "1")).strip().lower() not in {"0", "false", "off", "no"}
+    has_ollama_exe = bool(shutil.which("ollama") or shutil.which("ollama.exe"))
+    ollama_ok = _ollama_reachable()
+
+    _write_log(
+        "first_run: "
+        f"ffmpeg_missing={missing_ffmpeg} "
+        f"webview2_missing={missing_webview2} "
+        f"ai_prereqs_enabled={enable_ai} "
+        f"ollama_exe={has_ollama_exe} "
+        f"ollama_reachable={ollama_ok}"
+    )
 
     # WebView2 is recommended for best desktop experience (edgechromium backend).
     if missing_webview2:
@@ -202,6 +237,43 @@ def ensure_desktop_prereqs_first_run() -> None:
                 "Exports that require conversion (like .ogg) will not work until ffmpeg is installed.\n"
                 "Tip (Windows): winget install Gyan.FFmpeg",
             )
+
+    # Ollama is optional (offline Copilot). Don't auto-install without confirmation.
+    if enable_ai and not ollama_ok:
+        if _message_box_yes_no(
+            "SÖNDBÖUND setup",
+            "Optional: enable offline Copilot (local AI) via Ollama?\n\n"
+            "This is optional and may involve downloading large model files.\n\n"
+            "Install Ollama now?",
+        ):
+            if _winget_available():
+                started = _run_winget_install("Ollama.Ollama")
+                if started:
+                    _message_box_info(
+                        "SÖNDBÖUND setup",
+                        "Ollama install has been started.\n\n"
+                        "After installation completes, relaunch SÖNDBÖUND and use the Copilot panel to finish setup.",
+                    )
+            else:
+                _message_box_info(
+                    "SÖNDBÖUND setup",
+                    "Ollama was not detected and winget is not available.\n\n"
+                    "Install Ollama manually, then use the Copilot panel to download a model.",
+                )
+
+        # If the CLI is available, offer to pull the default model.
+        if has_ollama_exe and _message_box_yes_no(
+            "SÖNDBÖUND setup",
+            "Optional: download the default Copilot model now (llama3.2)?\n\n"
+            "This can take a while and may download several GB.",
+        ):
+            started = _run_command_new_console(["ollama", "pull", "llama3.2"])
+            if started:
+                _message_box_info(
+                    "SÖNDBÖUND setup",
+                    "Model download has been started in a new console window.\n\n"
+                    "When it finishes, you can use Copilot immediately.",
+                )
 
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
