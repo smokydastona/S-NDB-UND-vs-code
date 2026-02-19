@@ -8,6 +8,7 @@ const ui = {
   cutBtn: $("cutBtn"),
   copyBtn: $("copyBtn"),
   pasteBtn: $("pasteBtn"),
+  deleteBtn: $("deleteBtn"),
   silenceBtn: $("silenceBtn"),
   fadeInBtn: $("fadeInBtn"),
   fadeOutBtn: $("fadeOutBtn"),
@@ -56,6 +57,11 @@ function setStatus(text) {
   ui.status.textContent = String(text || "");
 }
 
+function setHintIfIdle() {
+  if (String(ui.status.textContent || '').trim()) return;
+  setStatus('Tip: Alt+drag scrub | Shift+drag pan | Wheel zoom | Drag select | Space play');
+}
+
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -74,6 +80,7 @@ function enableEditing(enabled) {
     ui.cutBtn,
     ui.copyBtn,
     ui.pasteBtn,
+    ui.deleteBtn,
     ui.silenceBtn,
     ui.fadeInBtn,
     ui.fadeOutBtn,
@@ -362,6 +369,7 @@ async function refreshFromResp(resp) {
 
   await loadAudioFromWavPath(resp.current_wav);
   setStatus('');
+  setHintIfIdle();
 }
 
 async function doOpen() {
@@ -417,6 +425,11 @@ ui.cutBtn.onclick = () => {
   const sel = selectionRange();
   if (!sel) return setStatus('Cut requires a selection.');
   applyOp('cut');
+};
+ui.deleteBtn.onclick = () => {
+  const sel = selectionRange();
+  if (!sel) return setStatus('Delete requires a selection.');
+  applyOp('delete');
 };
 ui.pasteBtn.onclick = () => {
   applyOp('paste');
@@ -614,6 +627,13 @@ window.addEventListener('keydown', (ev) => {
     playFromCursor();
     return;
   }
+  if (ev.key === 'Delete' || ev.key === 'Backspace') {
+    const sel = selectionRange();
+    if (!sel) return;
+    ev.preventDefault();
+    ui.deleteBtn.click();
+    return;
+  }
   if (ev.ctrlKey && ev.key.toLowerCase() === 'c') {
     const sel = selectionRange();
     if (!sel) return;
@@ -657,3 +677,4 @@ enableEditing(false);
 resizeCanvas();
 draw();
 updateTimeLabel();
+setHintIfIdle();

@@ -201,6 +201,23 @@ def _op_cut(st: SessionState, *, start: int, end: int) -> dict[str, Any]:
     return {}
 
 
+def _op_delete(st: SessionState, *, start: int, end: int) -> dict[str, Any]:
+    audio, sr = read_wav_mono(st.cur_path)
+    if int(sr) != int(st.sample_rate):
+        st.sample_rate = int(sr)
+
+    s, e = _safe_slice(audio, start, end)
+    seg_n = int(max(0, e - s))
+    if seg_n <= 0:
+        raise ValueError("delete requires a non-empty selection")
+
+    out = np.concatenate([audio[:s], audio[e:]], axis=0).astype(np.float32, copy=False)
+    if out.size == 0:
+        out = np.zeros(1, dtype=np.float32)
+    _commit_new_audio(st, out, op="delete", params={"start": int(s), "end": int(e), "samples": int(seg_n)})
+    return {}
+
+
 def _op_paste(st: SessionState, *, cursor: int, start: int | None, end: int | None) -> dict[str, Any]:
     audio, sr = read_wav_mono(st.cur_path)
     if int(sr) != int(st.sample_rate):
@@ -458,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
     p_op.add_argument(
         "--type",
         required=True,
-        choices=["trim", "reverse", "fade", "normalize", "pitch", "eq3", "copy", "cut", "paste", "silence_insert"],
+        choices=["trim", "reverse", "fade", "normalize", "pitch", "eq3", "copy", "cut", "delete", "paste", "silence_insert"],
     )
     p_op.add_argument("--start", type=int)
     p_op.add_argument("--end", type=int)
@@ -567,6 +584,10 @@ def main(argv: list[str] | None = None) -> int:
             if start is None or end is None:
                 raise SystemExit("cut requires --start and --end")
             _op_cut(st, start=int(start), end=int(end))
+        elif t == "delete":
+            if start is None or end is None:
+                raise SystemExit("delete requires --start and --end")
+            _op_delete(st, start=int(start), end=int(end))
         elif t == "paste":
             if cursor is None:
                 raise SystemExit("paste requires --cursor")
