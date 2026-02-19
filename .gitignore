@@ -13,6 +13,7 @@ venv/
 *.egg-info/
 dist/
 build/
+*.spec
 
 # Outputs
 outputs/
