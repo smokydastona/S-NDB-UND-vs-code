@@ -35,7 +35,7 @@ function main() {
   copyFile(path.join(repoRoot, 'example_manifest.json'), path.join(extRoot, 'example_manifest.json'));
 
   // Webview/editor assets
-  copyDir(path.join(repoRoot, 'electron', 'editor'), path.join(extRoot, 'electron', 'editor'));
+  copyDir(path.join(repoRoot, 'webview', 'editor'), path.join(extRoot, 'electron', 'editor'));
 
   // Marketplace icon
   copyFile(path.join(repoRoot, '.examples', 'icon.png'), path.join(extRoot, '.examples', 'icon.png'));

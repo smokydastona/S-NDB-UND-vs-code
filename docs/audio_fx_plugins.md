@@ -86,4 +86,4 @@ This avoids lock-in and lets you support multiple ecosystems.
 See:
 - `native/pluginhost/README.md`
 - `electron/main.js` (IPC glue)
-- `electron/editor/editor.js` (UI flow)
+- `webview/editor/editor.js` (UI flow)
