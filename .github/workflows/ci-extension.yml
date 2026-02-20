@@ -43,7 +43,7 @@ jobs:
         shell: bash
         working-directory: vscode-extension
         run: |
-          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); const base=String(j.version||'0.0.0').split('-')[0]; const run=process.env.GITHUB_RUN_NUMBER||'0'; const attempt=process.env.GITHUB_RUN_ATTEMPT||'1'; j.version=`${base}-ci.${run}.${attempt}`; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n'); console.log('CI version:', j.version);"
+          node -e 'const fs=require("fs"); const p="package.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); const base=String(j.version||"0.0.0").split("-")[0]; const run=process.env.GITHUB_RUN_NUMBER||"0"; const attempt=process.env.GITHUB_RUN_ATTEMPT||"1"; j.version=base+"-ci."+run+"."+attempt; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\\n"); console.log("CI version:", j.version);'
 
       - name: Package VSIX
         working-directory: vscode-extension
