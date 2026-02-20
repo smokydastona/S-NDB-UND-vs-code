@@ -47,14 +47,19 @@ if (!(Test-Path $python)) {
 
 # Install build-time tooling only (kept out of requirements.txt)
 & $python -m pip install --upgrade pip | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed (exit $LASTEXITCODE)." }
 & $python -m pip install pyinstaller | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (exit $LASTEXITCODE)." }
 & $python -m pip install pillow | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip install pillow failed (exit $LASTEXITCODE)." }
 
 # Ensure runtime deps are present (uses requirements.txt)
 & $python -m pip install -r requirements.txt | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)." }
 
 # Ensure the local project package itself is importable for PyInstaller analysis.
 & $python -m pip install -e . | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed (exit $LASTEXITCODE)." }
 
 # Build the executable (folder-based /onedir for reliability)
 # Note: AI engines (torch/diffusers/transformers) make these builds large.

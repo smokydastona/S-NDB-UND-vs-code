@@ -21,4 +21,4 @@ pywebview>=5.0
 # Windows desktop backend (pywebview WinForms) depends on pythonnet.
 # Pin these together to avoid mismatched Python.Runtime.dll vs loader code in packaged builds.
 pythonnet==3.0.3; platform_system == "Windows" and python_version < "3.13"
-clr-loader==0.2.7; platform_system == "Windows" and python_version < "3.13"
+clr-loader==0.2.7.post0; platform_system == "Windows" and python_version < "3.13"
