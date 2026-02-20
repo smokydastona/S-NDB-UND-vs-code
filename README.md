@@ -62,6 +62,16 @@ Open Command Palette and run:
 - **SÖNDBÖUND: Generate Sound**
 - **SÖNDBÖUND: Export Pack**
 
+## Publishing (VS Code Marketplace)
+
+Publishing is done from the extension package folder:
+
+```powershell
+cd vscode-extension
+npm ci
+npx --yes @vscode/vsce publish
+```
+
 ## Commands (Copilot usage)
 
 These commands are designed so Copilot can invoke them deterministically.
