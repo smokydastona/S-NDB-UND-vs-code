@@ -1,20 +1,7 @@
 name: Release VSIX
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Existing tag to publish (e.g. v0.0.2)"
-        required: true
-        type: string
-      prerelease:
-        description: "Mark the GitHub Release as prerelease"
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: write
@@ -26,15 +13,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Resolve tag
+      - name: Compute CI tag
         id: tag
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "value=ci-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag "${{ steps.tag.outputs.value }}"
+          git push origin "${{ steps.tag.outputs.value }}"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -50,13 +41,11 @@ jobs:
         working-directory: vscode-extension
         run: npm ci
 
-      - name: Set extension version from tag
+      - name: Set CI version (actions-only)
         working-directory: vscode-extension
         shell: bash
         run: |
-          node -e 'const fs=require("fs"); const p="package.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); const tag=process.env.TAG||"v0.0.0"; const ver=String(tag).replace(/^v/, ""); j.version=ver; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8"); console.log("Release version:", j.version);'
-        env:
-          TAG: ${{ steps.tag.outputs.value }}
+          node -e 'const fs=require("fs"); const p="package.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); const base=String(j.version||"0.0.0").split("-")[0]; const run=process.env.GITHUB_RUN_NUMBER||"0"; const attempt=process.env.GITHUB_RUN_ATTEMPT||"1"; j.version=base+"-ci."+run+"."+attempt; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8"); console.log("Release version:", j.version);'
 
       - name: Prepublish
         working-directory: vscode-extension
@@ -71,7 +60,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: "SÖNDBÖUND ${{ steps.tag.outputs.value }}"
-          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          prerelease: true
           files: |
             vscode-extension/*.vsix
         env:
