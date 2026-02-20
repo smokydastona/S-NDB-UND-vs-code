@@ -1,0 +1,78 @@
+name: Release VSIX
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (e.g. v0.0.2)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as prerelease"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install npm deps
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Set extension version from tag
+        working-directory: vscode-extension
+        shell: bash
+        run: |
+          node -e 'const fs=require("fs"); const p="package.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); const tag=process.env.TAG||"v0.0.0"; const ver=String(tag).replace(/^v/, ""); j.version=ver; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8"); console.log("Release version:", j.version);'
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
+
+      - name: Prepublish
+        working-directory: vscode-extension
+        run: npm run vscode:prepublish
+
+      - name: Package VSIX
+        working-directory: vscode-extension
+        run: npx --yes @vscode/vsce package
+
+      - name: Create GitHub Release + upload VSIX
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: "SÖNDBÖUND ${{ steps.tag.outputs.value }}"
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          files: |
+            vscode-extension/*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
