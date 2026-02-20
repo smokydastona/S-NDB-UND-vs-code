@@ -47,6 +47,10 @@ type OpenWebUiOptions = {
   proxyPort?: number;
 };
 
+type SetupBackendOptions = {
+  workspaceRoot?: string;
+};
+
 let webUiProc: cp.ChildProcessWithoutNullStreams | null = null;
 let webUiUrl: string | null = null;
 let webUiPanel: vscode.WebviewPanel | null = null;
@@ -107,11 +111,133 @@ function resolvePythonCommand(repoRoot: string): string {
   const envPython = String(process.env.SOUNDGEN_PYTHON || '').trim();
   if (envPython) return envPython;
 
-  const venvWin = path.join(repoRoot, '.venv', 'Scripts', 'python.exe');
-  const venvPosix = path.join(repoRoot, '.venv', 'bin', 'python');
-  if (process.platform === 'win32' && fs.existsSync(venvWin)) return venvWin;
-  if (process.platform !== 'win32' && fs.existsSync(venvPosix)) return venvPosix;
+  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const candidateRoots = [wsRoot, repoRoot].filter((p): p is string => !!p);
+  for (const root of candidateRoots) {
+    const venvWin = path.join(root, '.venv', 'Scripts', 'python.exe');
+    const venvPosix = path.join(root, '.venv', 'bin', 'python');
+    if (process.platform === 'win32' && fs.existsSync(venvWin)) return venvWin;
+    if (process.platform !== 'win32' && fs.existsSync(venvPosix)) return venvPosix;
+  }
   return 'python';
+}
+
+function docsUrlFromConfig(): string {
+  const s = String(vscode.workspace.getConfiguration('sondbound').get('docsUrl') || '').trim();
+  if (s) return s;
+  return 'https://github.com/smokydastona/S-NDB-UND-vs-code#readme';
+}
+
+async function openDocs(): Promise<void> {
+  const url = docsUrlFromConfig();
+  try {
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+  } catch {
+    // ignore
+  }
+}
+
+function isSpawnNotFound(e: any): boolean {
+  return String((e as any)?.code || '').toUpperCase() === 'ENOENT';
+}
+
+function looksLikeMissingPythonDeps(detail: string): boolean {
+  const s = String(detail || '');
+  return /ModuleNotFoundError\b|No module named\b|ImportError\b/i.test(s);
+}
+
+async function showFriendlyBackendFailure(
+  kind: 'generate' | 'export' | 'webui',
+  e: any,
+  detail: string,
+  output: vscode.OutputChannel
+): Promise<void> {
+  if (isSpawnNotFound(e)) {
+    const choice = await vscode.window.showErrorMessage(
+      'SÖNDBÖUND: Python not found. Install Python or set sondbound.pythonPath.',
+      'Open Settings',
+      'Docs',
+      'Show Output'
+    );
+    if (choice === 'Open Settings') {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'sondbound.pythonPath');
+    } else if (choice === 'Docs') {
+      await openDocs();
+    } else if (choice === 'Show Output') {
+      output.show(true);
+    }
+    return;
+  }
+
+  if (looksLikeMissingPythonDeps(detail)) {
+    const choice = await vscode.window.showErrorMessage(
+      'SÖNDBÖUND: Backend dependencies look missing (pip packages).',
+      'Run Setup',
+      'Docs',
+      'Show Output'
+    );
+    if (choice === 'Run Setup') {
+      await vscode.commands.executeCommand('sondbound.setupBackend');
+    } else if (choice === 'Docs') {
+      await openDocs();
+    } else if (choice === 'Show Output') {
+      output.show(true);
+    }
+    return;
+  }
+
+  const title = kind === 'generate'
+    ? 'SÖNDBÖUND: Generate failed. (See Output for details)'
+    : kind === 'export'
+      ? 'SÖNDBÖUND: Pack export failed. (See Output for details)'
+      : 'SÖNDBÖUND: Web UI failed to start. (See Output for details)';
+
+  const choice = await vscode.window.showErrorMessage(title, 'Show Output', 'Docs');
+  if (choice === 'Show Output') output.show(true);
+  if (choice === 'Docs') await openDocs();
+}
+
+async function maybeShowFirstRunWelcome(context: vscode.ExtensionContext): Promise<void> {
+  const enabled = Boolean(vscode.workspace.getConfiguration('sondbound').get('showWelcome') ?? true);
+  if (!enabled) return;
+
+  const key = 'sondbound.welcomeShown';
+  const already = context.globalState.get<boolean>(key, false);
+  if (already) return;
+
+  await context.globalState.update(key, true);
+
+  const choice = await vscode.window.showInformationMessage(
+    'SÖNDBÖUND is ready.',
+    'Generate Sound',
+    'Docs'
+  );
+  if (choice === 'Generate Sound') {
+    await vscode.commands.executeCommand('sondbound.generateSound');
+  } else if (choice === 'Docs') {
+    await openDocs();
+  }
+}
+
+function setupStatusBar(context: vscode.ExtensionContext): vscode.StatusBarItem {
+  const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  item.text = 'SÖNDBÖUND: Generate Sound';
+  item.command = 'sondbound.generateSound';
+  item.tooltip = 'Generate a sound from a prompt';
+
+  const refresh = () => {
+    const enabled = Boolean(vscode.workspace.getConfiguration('sondbound').get('showStatusBar') ?? true);
+    if (enabled) item.show();
+    else item.hide();
+  };
+
+  refresh();
+  context.subscriptions.push(item);
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration('sondbound.showStatusBar')) refresh();
+  }));
+
+  return item;
 }
 
 function defaultEngineFromConfig(): string {
@@ -962,6 +1088,18 @@ export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel('SÖNDBÖUND');
   context.subscriptions.push(output);
 
+  // Keep activation lightweight: safe to run onStartupFinished.
+  try {
+    fs.mkdirSync(context.globalStorageUri.fsPath, { recursive: true });
+  } catch {
+    // ignore
+  }
+
+  setupStatusBar(context);
+  setTimeout(() => {
+    void maybeShowFirstRunWelcome(context);
+  }, 750);
+
   context.subscriptions.push({
     dispose: () => {
       try {
@@ -994,42 +1132,75 @@ export function activate(context: vscode.ExtensionContext) {
       const storageDir = context.globalStorageUri.fsPath;
       fs.mkdirSync(storageDir, { recursive: true });
 
-      output.show(true);
-      const targetUrl = await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'SÖNDBÖUND: Starting Web UI…',
-          cancellable: false
-        },
-        async () => await startWebUiServer(repoRoot, storageDir, output, options)
-      );
+      try {
+        output.show(true);
+        const targetUrl = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'SÖNDBÖUND: Starting Web UI…',
+            cancellable: false
+          },
+          async () => await startWebUiServer(repoRoot, storageDir, output, options)
+        );
 
-      const embedMode = options?.embed || defaultWebUiEmbedFromConfig();
-      const embedUrl = embedMode === 'proxy'
-        ? await ensureWebUiProxy(targetUrl, output, options?.proxyPort)
-        : targetUrl;
+        const embedMode = options?.embed || defaultWebUiEmbedFromConfig();
+        const embedUrl = embedMode === 'proxy'
+          ? await ensureWebUiProxy(targetUrl, output, options?.proxyPort)
+          : targetUrl;
 
-      if (webUiPanel) {
-        webUiPanel.webview.html = makeWebUiHtml(webUiPanel.webview, embedUrl, targetUrl);
-        webUiPanel.reveal(vscode.ViewColumn.One);
+        if (webUiPanel) {
+          webUiPanel.webview.html = makeWebUiHtml(webUiPanel.webview, embedUrl, targetUrl);
+          webUiPanel.reveal(vscode.ViewColumn.One);
+          return { ok: true, url: targetUrl, embeddedUrl: embedUrl };
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          'sondbound.webui',
+          'SÖNDBÖUND Web UI',
+          vscode.ViewColumn.One,
+          {
+            enableScripts: false,
+            retainContextWhenHidden: true,
+          }
+        );
+        webUiPanel = panel;
+        panel.webview.html = makeWebUiHtml(panel.webview, embedUrl, targetUrl);
+        panel.onDidDispose(() => {
+          if (webUiPanel === panel) webUiPanel = null;
+        });
         return { ok: true, url: targetUrl, embeddedUrl: embedUrl };
+      } catch (e: any) {
+        const detail = formatBackendError(e);
+        output.appendLine(detail);
+        await showFriendlyBackendFailure('webui', e, detail, output);
+        return { ok: false, error: String(e?.message || e) };
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sondbound.setupBackend', async (options?: SetupBackendOptions) => {
+      const wsRoot = String(options?.workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '').trim();
+      if (!wsRoot) {
+        vscode.window.showErrorMessage('SÖNDBÖUND: Open a folder/workspace first to set up a .venv.');
+        return { ok: false, error: 'No workspace folder is open' };
       }
 
-      const panel = vscode.window.createWebviewPanel(
-        'sondbound.webui',
-        'SÖNDBÖUND Web UI',
-        vscode.ViewColumn.One,
-        {
-          enableScripts: false,
-          retainContextWhenHidden: true,
-        }
-      );
-      webUiPanel = panel;
-      panel.webview.html = makeWebUiHtml(panel.webview, embedUrl, targetUrl);
-      panel.onDidDispose(() => {
-        if (webUiPanel === panel) webUiPanel = null;
-      });
-      return { ok: true, url: targetUrl, embeddedUrl: embedUrl };
+      const requirementsPath = path.join(context.extensionPath, 'requirements.txt');
+      const term = vscode.window.createTerminal({ name: 'SÖNDBÖUND Setup', cwd: wsRoot });
+      term.show(true);
+
+      if (process.platform === 'win32') {
+        term.sendText('python -m venv .venv', true);
+        term.sendText('.\\.venv\\Scripts\\python -m pip install --upgrade pip', true);
+        term.sendText(`.\\.venv\\Scripts\\python -m pip install -r "${requirementsPath}"`, true);
+      } else {
+        term.sendText('python3 -m venv .venv || python -m venv .venv', true);
+        term.sendText('./.venv/bin/python -m pip install --upgrade pip', true);
+        term.sendText(`./.venv/bin/python -m pip install -r "${requirementsPath}"`, true);
+      }
+
+      return { ok: true };
     })
   );
 
@@ -1208,13 +1379,7 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (e: any) {
         const detail = formatBackendError(e);
         output.appendLine(detail);
-        if (!isHeadless) {
-          const choice = await vscode.window.showErrorMessage(
-            'SÖNDBÖUND: Generate failed. (See Output for details)',
-            'Show Output'
-          );
-          if (choice === 'Show Output') output.show(true);
-        }
+        if (!isHeadless) await showFriendlyBackendFailure('generate', e, detail, output);
         return { ok: false, error: String(e?.message || e) };
       }
     })
@@ -1303,13 +1468,7 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (e: any) {
         const detail = formatBackendError(e);
         output.appendLine(detail);
-        if (!isHeadless) {
-          const choice = await vscode.window.showErrorMessage(
-            'SÖNDBÖUND: Pack export failed. (See Output for details)',
-            'Show Output'
-          );
-          if (choice === 'Show Output') output.show(true);
-        }
+        if (!isHeadless) await showFriendlyBackendFailure('export', e, detail, output);
         return { ok: false, error: String(e?.message || e) };
       }
     })

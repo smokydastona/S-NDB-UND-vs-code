@@ -2,7 +2,9 @@
 
 ![SÖNDBÖUND banner](https://raw.githubusercontent.com/smokydastona/S-NDB-UND-vs-code/main/.examples/Banner.png)
 
-SÖNDBÖUND is a VS Code extension that embeds the SÖNDBÖUND editor UI in a Webview and exposes **command-palette + Copilot-friendly commands** to generate/export game audio using the bundled Python backend (`soundgen`).
+## What this does
+
+SÖNDBÖUND adds a “prompt → sound” workflow to VS Code (Generate WAV, Export Pack, and an embedded editor UI), powered by the bundled Python backend (`soundgen`).
 
 This repository is an **extension fork/version** of SÖNDBÖUND: it contains both the VS Code extension (TypeScript) and the backend (Python, `src/soundgen/`).
 
@@ -16,7 +18,16 @@ This repository is an **extension fork/version** of SÖNDBÖUND: it contains bot
 
 ## Install
 
-### Install from VSIX (recommended right now)
+### Install from VS Code Marketplace (one-click)
+
+- In VS Code: open **Extensions** and search for **SÖNDBÖUND**.
+- Or via CLI:
+
+```powershell
+code --install-extension smokydastona.sondbound
+```
+
+### Install from VSIX (dev / offline)
 
 1. Build the VSIX:
 
@@ -29,7 +40,18 @@ npx --yes @vscode/vsce package
 
 ## Quickstart (in VS Code)
 
-Open Command Palette and run one of:
+### Use (60 seconds)
+
+1. Click the Status Bar button **“SÖNDBÖUND: Generate Sound”** (or run **SÖNDBÖUND: Generate Sound** from Command Palette).
+2. Enter a prompt (example: `coin pickup`).
+
+If you get a Python/dependency error on first run, use:
+
+- **SÖNDBÖUND: Setup Backend (Create .venv + pip install)**
+
+### Other commands
+
+Open Command Palette and run:
 
 - **SÖNDBÖUND: Open UI**
 - **SÖNDBÖUND: Open Web UI (Control Panel)**
@@ -107,6 +129,7 @@ Return value:
 { ok: true; zipPath: string }
 // or
 { ok: false; error: string }
+```
 
 ### `sondbound.openWebUI`
 

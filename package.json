@@ -21,12 +21,14 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:sondbound.openUI",
     "onCommand:sondbound.openWebUI",
     "onCommand:sondbound.openEditor",
     "onCommand:sondbound.generate",
     "onCommand:sondbound.generateSound",
-    "onCommand:sondbound.exportPack"
+    "onCommand:sondbound.exportPack",
+    "onCommand:sondbound.setupBackend"
   ],
   "main": "./out/extension.js",
   "files": [
@@ -68,11 +70,30 @@
       {
         "command": "sondbound.exportPack",
         "title": "SÖNDBÖUND: Export Pack (Manifest → ZIP)"
+      },
+      {
+        "command": "sondbound.setupBackend",
+        "title": "SÖNDBÖUND: Setup Backend (Create .venv + pip install)"
       }
     ],
     "configuration": {
       "title": "SÖNDBÖUND",
       "properties": {
+        "sondbound.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a Status Bar button for the main action (Generate Sound)."
+        },
+        "sondbound.showWelcome": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time welcome message on first activation (two buttons: Generate Sound / Docs)."
+        },
+        "sondbound.docsUrl": {
+          "type": "string",
+          "default": "https://github.com/smokydastona/S-NDB-UND-vs-code#readme",
+          "description": "Documentation URL opened by the extension's Docs buttons."
+        },
         "sondbound.pythonPath": {
           "type": "string",
           "default": "",
