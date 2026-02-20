@@ -98,6 +98,16 @@
           "default": "outputs",
           "description": "Default subfolder (relative to workspace root) for generated WAV output when no explicit outputPath is provided."
         },
+        "sondbound.deterministic": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force deterministic generation when possible. When enabled, and no explicit seed is provided, the extension passes defaultSeed to the backend."
+        },
+        "sondbound.defaultSeed": {
+          "type": "number",
+          "default": 1337,
+          "description": "Default seed used when deterministic=true and a command call omits seed."
+        },
         "sondbound.webUiHost": {
           "type": "string",
           "default": "127.0.0.1",

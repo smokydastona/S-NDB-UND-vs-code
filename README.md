@@ -68,6 +68,7 @@ Args:
   prompt: string;
   engine?: string;
   seconds?: number;
+  seed?: number;
   outputPath?: string;
   post?: boolean;
   edit?: boolean;
@@ -82,7 +83,7 @@ Notes:
 Return value (machine-readable):
 
 ```ts
-{ ok: true; outputPath: string; engine: string; seconds: number | null; post: boolean }
+{ ok: true; outputPath: string; engine: string; seconds: number | null; seed: number | null; post: boolean }
 // or
 { ok: false; error: string }
 ```
@@ -138,6 +139,8 @@ Settings (VS Code → Settings → search “SÖNDBÖUND”):
 - `sondbound.defaultSeconds`: used when a headless generate call omits `seconds`.
 - `sondbound.defaultPost`: used when a headless generate call omits `post`.
 - `sondbound.defaultOutputSubdir`: default output folder (relative to workspace root).
+- `sondbound.deterministic`: if true, the extension will pass a stable seed when possible.
+- `sondbound.defaultSeed`: seed used when `deterministic=true` and a call omits `seed`.
 - `sondbound.webUiHost`: bind host for the local web UI (default `127.0.0.1`).
 - `sondbound.webUiPort`: bind port for the local web UI (default `7860`).
 - `sondbound.webUiMode`: `control-panel` (default) or `legacy`.

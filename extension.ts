@@ -24,6 +24,7 @@ type GenerateOptions = {
   prompt: string;
   engine?: string;
   seconds?: number;
+  seed?: number;
   outputPath?: string;
   post?: boolean;
   edit?: boolean;
@@ -31,7 +32,7 @@ type GenerateOptions = {
 
 type ExportPackOptions = {
   manifestPath: string;
-  zipPath: string;
+  zipPath?: string;
 };
 
 type OpenUiOptions = {
@@ -129,6 +130,15 @@ function defaultPostFromConfig(): boolean {
 function defaultOutputSubdirFromConfig(): string {
   const s = String(vscode.workspace.getConfiguration('sondbound').get('defaultOutputSubdir') || 'outputs').trim();
   return s || 'outputs';
+}
+
+function deterministicFromConfig(): boolean {
+  return Boolean(vscode.workspace.getConfiguration('sondbound').get('deterministic') ?? false);
+}
+
+function defaultSeedFromConfig(): number {
+  const n = Number(vscode.workspace.getConfiguration('sondbound').get('defaultSeed') ?? 1337);
+  return Number.isFinite(n) ? Math.trunc(n) : 1337;
 }
 
 function defaultWebUiHostFromConfig(): string {
@@ -1026,6 +1036,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.openEditor', async () => {
       await openEditorPanel(context);
+      return { ok: true };
     })
   );
 
@@ -1132,8 +1143,18 @@ export function activate(context: vscode.ExtensionContext) {
       const post = options?.post ?? (isHeadless ? defaultPostFromConfig() : true);
       const edit = options?.edit ?? false;
 
+      const seedFromOptions = options?.seed;
+      let seed: number | undefined;
+      if (seedFromOptions != null) {
+        const n = Number(seedFromOptions);
+        if (!Number.isFinite(n)) return { ok: false, error: 'seed must be a number' };
+        seed = Math.trunc(n);
+      } else if (isHeadless && deterministicFromConfig()) {
+        seed = defaultSeedFromConfig();
+      }
+
       if (!isHeadless) output.show(true);
-      output.appendLine(`[generate] engine=${engineLabel} seconds=${seconds ?? '(default)'} out=${outUri.fsPath}`);
+      output.appendLine(`[generate] engine=${engineLabel} seconds=${seconds ?? '(default)'} seed=${seed ?? '(random)'} out=${outUri.fsPath}`);
       output.appendLine(`[generate] prompt: ${prompt}`);
 
       try {
@@ -1141,6 +1162,7 @@ export function activate(context: vscode.ExtensionContext) {
           const args: string[] = ['generate', '--engine', engineLabel, '--prompt', prompt, '--out', outUri.fsPath];
           if (post) args.push('--post');
           if (seconds != null) args.push('--seconds', String(seconds));
+          if (seed != null) args.push('--seed', String(seed));
 
           const res = await runBackendOnce(repoRoot, storageDir, args);
           if (res.stdout) output.appendLine(res.stdout.trimEnd());
@@ -1180,6 +1202,7 @@ export function activate(context: vscode.ExtensionContext) {
           outputPath: outUri.fsPath,
           engine: engineLabel,
           seconds: seconds ?? null,
+          seed: seed ?? null,
           post,
         };
       } catch (e: any) {
