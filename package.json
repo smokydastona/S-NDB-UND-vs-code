@@ -25,7 +25,8 @@
   "files": [
     "out/**",
     "electron/editor/**",
-    "src/**",
+    "src/soundgen/**/*.py",
+    "src/soundgen/**/*.md",
     "configs/**",
     "example_manifest.json",
     "requirements.txt",
