@@ -112,6 +112,8 @@ Settings (VS Code → Settings → search “SÖNDBÖUND”):
 - `sondbound.webUiHost`: bind host for the local web UI (default `127.0.0.1`).
 - `sondbound.webUiPort`: bind port for the local web UI (default `7860`).
 - `sondbound.webUiMode`: `control-panel` (default) or `legacy`.
+- `sondbound.webUiEmbed`: `proxy` (default, most reliable) or `direct` (iframe Gradio directly).
+- `sondbound.webUiProxyPort`: proxy port when `webUiEmbed=proxy` (`0` = auto-pick a free port).
 
 Environment variable alternative:
 

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as http from 'http';
+import * as net from 'net';
 import * as path from 'path';
 
 type WebviewRequestMessage = {
@@ -40,11 +42,23 @@ type OpenWebUiOptions = {
   host?: string;
   port?: number;
   mode?: 'control-panel' | 'legacy';
+  embed?: 'proxy' | 'direct';
+  proxyPort?: number;
 };
 
 let webUiProc: cp.ChildProcessWithoutNullStreams | null = null;
 let webUiUrl: string | null = null;
 let webUiPanel: vscode.WebviewPanel | null = null;
+
+type WebUiProxyState = {
+  server: http.Server;
+  port: number;
+  targetOrigin: string;
+  targetHost: string;
+  targetPort: number;
+};
+
+let webUiProxy: WebUiProxyState | null = null;
 
 function slugifyFileStem(input: string): string {
   const s = String(input || '').trim().toLowerCase();
@@ -132,7 +146,174 @@ function defaultWebUiModeFromConfig(): 'control-panel' | 'legacy' {
   return s === 'legacy' ? 'legacy' : 'control-panel';
 }
 
-function makeWebUiHtml(webview: vscode.Webview, url: string): string {
+function defaultWebUiEmbedFromConfig(): 'proxy' | 'direct' {
+  const s = String(vscode.workspace.getConfiguration('sondbound').get('webUiEmbed') || 'proxy').trim().toLowerCase();
+  return s === 'direct' ? 'direct' : 'proxy';
+}
+
+function defaultWebUiProxyPortFromConfig(): number {
+  const n = Number(vscode.workspace.getConfiguration('sondbound').get('webUiProxyPort') ?? 0);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+function sanitizeContentSecurityPolicy(value: string): string {
+  const directives = String(value || '')
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean);
+  const filtered = directives.filter((d) => !/^frame-ancestors\b/i.test(d));
+  return filtered.join('; ');
+}
+
+function applyFrameFriendlyHeaders(headers: http.OutgoingHttpHeaders): http.OutgoingHttpHeaders {
+  const out: http.OutgoingHttpHeaders = { ...headers };
+
+  for (const key of Object.keys(out)) {
+    if (key.toLowerCase() === 'x-frame-options') delete out[key];
+  }
+
+  const cspKey = Object.keys(out).find((k) => k.toLowerCase() === 'content-security-policy');
+  if (cspKey) {
+    const v = out[cspKey];
+    const first = Array.isArray(v) ? (v[0] ?? '') : String(v ?? '');
+    const sanitized = sanitizeContentSecurityPolicy(first);
+    if (sanitized) out[cspKey] = sanitized;
+    else delete out[cspKey];
+  }
+
+  return out;
+}
+
+async function ensureWebUiProxy(
+  targetUrl: string,
+  output: vscode.OutputChannel,
+  requestedPort?: number
+): Promise<string> {
+  const parsed = new URL(targetUrl);
+  const targetHost = parsed.hostname === '0.0.0.0' ? '127.0.0.1' : parsed.hostname;
+  const targetPort = parsed.port ? Number(parsed.port) : (parsed.protocol === 'https:' ? 443 : 80);
+  const targetOrigin = `${parsed.protocol}//${targetHost}:${targetPort}`;
+
+  const portFromConfig = defaultWebUiProxyPortFromConfig();
+  const wantedPort = requestedPort != null ? Math.floor(Number(requestedPort)) : portFromConfig;
+  const normalizedWantedPort = Number.isFinite(wantedPort) && wantedPort >= 0 ? wantedPort : 0;
+
+  if (
+    webUiProxy &&
+    webUiProxy.targetOrigin === targetOrigin &&
+    (normalizedWantedPort === 0 || webUiProxy.port === normalizedWantedPort)
+  ) {
+    return `http://127.0.0.1:${webUiProxy.port}`;
+  }
+
+  if (webUiProxy) {
+    try { webUiProxy.server.close(); } catch {}
+    webUiProxy = null;
+  }
+
+  const server = http.createServer((req, res) => {
+    if (!req.url) {
+      res.statusCode = 400;
+      res.end('Bad Request');
+      return;
+    }
+
+    const proxyOrigin = `http://127.0.0.1:${(server.address() as any)?.port ?? normalizedWantedPort ?? 0}`;
+
+    const outgoingHeaders: Record<string, any> = { ...req.headers };
+    outgoingHeaders.host = `${targetHost}:${targetPort}`;
+    if (outgoingHeaders.origin) outgoingHeaders.origin = targetOrigin;
+    if (outgoingHeaders.referer) outgoingHeaders.referer = `${targetOrigin}/`;
+
+    const upstreamReq = http.request(
+      {
+        protocol: parsed.protocol,
+        host: targetHost,
+        port: targetPort,
+        method: req.method,
+        path: req.url,
+        headers: outgoingHeaders,
+      },
+      (upstreamRes) => {
+        const headers = applyFrameFriendlyHeaders(upstreamRes.headers as http.OutgoingHttpHeaders);
+
+        const locKey = Object.keys(headers).find((k) => k.toLowerCase() === 'location');
+        if (locKey) {
+          const v = headers[locKey];
+          const first = Array.isArray(v) ? (v[0] ?? '') : String(v ?? '');
+          if (first.startsWith(targetOrigin)) headers[locKey] = first.replace(targetOrigin, proxyOrigin);
+        }
+
+        res.writeHead(upstreamRes.statusCode || 200, headers);
+        upstreamRes.pipe(res);
+      }
+    );
+
+    upstreamReq.on('error', (e) => {
+      output.appendLine(`[webui-proxy] upstream request error: ${String((e as any)?.message || e)}`);
+      if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
+      res.end('Bad Gateway');
+    });
+
+    req.pipe(upstreamReq);
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    // Minimal WS tunnel: forward the raw HTTP upgrade request to the upstream.
+    const upstream = net.connect(targetPort, targetHost, () => {
+      const rawHeaders = req.rawHeaders || [];
+      const lines: string[] = [];
+      lines.push(`${req.method} ${req.url} HTTP/${req.httpVersion}`);
+      for (let i = 0; i < rawHeaders.length; i += 2) {
+        const k = rawHeaders[i];
+        const v = rawHeaders[i + 1];
+        if (!k) continue;
+        if (String(k).toLowerCase() === 'host') continue;
+        lines.push(`${k}: ${v}`);
+      }
+      lines.push(`Host: ${targetHost}:${targetPort}`);
+      lines.push('\r\n');
+      const requestHead = lines.join('\r\n');
+
+      upstream.write(requestHead);
+      if (head && head.length) upstream.write(head);
+      socket.pipe(upstream);
+      upstream.pipe(socket);
+    });
+
+    upstream.on('error', (e) => {
+      output.appendLine(`[webui-proxy] ws upstream error: ${String((e as any)?.message || e)}`);
+      try { socket.destroy(); } catch {}
+    });
+    socket.on('error', () => {
+      try { upstream.destroy(); } catch {}
+    });
+  });
+
+  const listenPort = normalizedWantedPort;
+  const boundPort = await new Promise<number>((resolve, reject) => {
+    server.listen(listenPort, '127.0.0.1', () => {
+      const addr = server.address();
+      if (addr && typeof addr === 'object' && typeof addr.port === 'number') return resolve(addr.port);
+      return reject(new Error('Failed to bind proxy server port'));
+    });
+    server.on('error', reject);
+  });
+
+  webUiProxy = {
+    server,
+    port: boundPort,
+    targetOrigin,
+    targetHost,
+    targetPort,
+  };
+
+  output.appendLine(`[webui-proxy] listening on http://127.0.0.1:${boundPort} -> ${targetOrigin}`);
+  return `http://127.0.0.1:${boundPort}`;
+}
+
+function makeWebUiHtml(webview: vscode.Webview, embedUrl: string, targetUrl?: string): string {
   const csp = [
     "default-src 'none'",
     // Allow iframing local Gradio server
@@ -142,7 +323,8 @@ function makeWebUiHtml(webview: vscode.Webview, url: string): string {
     `style-src ${webview.cspSource} 'unsafe-inline'`,
   ].join('; ');
 
-  const safeUrl = String(url);
+  const safeEmbedUrl = String(embedUrl);
+  const safeTargetUrl = targetUrl ? String(targetUrl) : safeEmbedUrl;
 
   return `<!doctype html>
 <html lang="en">
@@ -161,9 +343,9 @@ function makeWebUiHtml(webview: vscode.Webview, url: string): string {
 </head>
 <body>
   <div class="wrap">
-    <div class="bar">Local URL: <a href="${safeUrl}">${safeUrl}</a></div>
+    <div class="bar">Target URL: <a href="${safeTargetUrl}">${safeTargetUrl}</a> &nbsp;|&nbsp; Embedded URL: <a href="${safeEmbedUrl}">${safeEmbedUrl}</a></div>
     <iframe
-      src="${safeUrl}"
+      src="${safeEmbedUrl}"
       sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-popups"
       allow="clipboard-read; clipboard-write"
     ></iframe>
@@ -777,9 +959,15 @@ export function activate(context: vscode.ExtensionContext) {
       } catch {
         // ignore
       }
+      try {
+        if (webUiProxy) webUiProxy.server.close();
+      } catch {
+        // ignore
+      }
       webUiProc = null;
       webUiUrl = null;
       webUiPanel = null;
+      webUiProxy = null;
     }
   });
 
@@ -797,7 +985,7 @@ export function activate(context: vscode.ExtensionContext) {
       fs.mkdirSync(storageDir, { recursive: true });
 
       output.show(true);
-      const url = await vscode.window.withProgress(
+      const targetUrl = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
           title: 'SÖNDBÖUND: Starting Web UI…',
@@ -806,10 +994,15 @@ export function activate(context: vscode.ExtensionContext) {
         async () => await startWebUiServer(repoRoot, storageDir, output, options)
       );
 
+      const embedMode = options?.embed || defaultWebUiEmbedFromConfig();
+      const embedUrl = embedMode === 'proxy'
+        ? await ensureWebUiProxy(targetUrl, output, options?.proxyPort)
+        : targetUrl;
+
       if (webUiPanel) {
-        webUiPanel.webview.html = makeWebUiHtml(webUiPanel.webview, url);
+        webUiPanel.webview.html = makeWebUiHtml(webUiPanel.webview, embedUrl, targetUrl);
         webUiPanel.reveal(vscode.ViewColumn.One);
-        return { ok: true, url };
+        return { ok: true, url: targetUrl, embeddedUrl: embedUrl };
       }
 
       const panel = vscode.window.createWebviewPanel(
@@ -822,11 +1015,11 @@ export function activate(context: vscode.ExtensionContext) {
         }
       );
       webUiPanel = panel;
-      panel.webview.html = makeWebUiHtml(panel.webview, url);
+      panel.webview.html = makeWebUiHtml(panel.webview, embedUrl, targetUrl);
       panel.onDidDispose(() => {
         if (webUiPanel === panel) webUiPanel = null;
       });
-      return { ok: true, url };
+      return { ok: true, url: targetUrl, embeddedUrl: embedUrl };
     })
   );
 

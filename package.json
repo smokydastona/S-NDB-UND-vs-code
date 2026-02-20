@@ -107,6 +107,17 @@
           "enum": ["control-panel", "legacy"],
           "default": "control-panel",
           "description": "Which web UI to launch. 'control-panel' is the modern UI; 'legacy' is the older accordion-style UI."
+        },
+        "sondbound.webUiEmbed": {
+          "type": "string",
+          "enum": ["proxy", "direct"],
+          "default": "proxy",
+          "description": "How to embed the local Web UI in the VS Code Webview. 'proxy' runs a local reverse proxy that strips frame-blocking headers and tunnels websockets (most reliable). 'direct' iframes the Gradio server URL directly."
+        },
+        "sondbound.webUiProxyPort": {
+          "type": "number",
+          "default": 0,
+          "description": "Port for the local reverse proxy used when webUiEmbed=proxy. Use 0 to auto-pick a free port."
         }
       }
     }
