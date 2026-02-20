@@ -166,7 +166,8 @@
     "prepare:bundle": "node scripts/prepare-bundle.js",
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
-    "vscode:prepublish": "npm run prepare:bundle && npm run compile"
+    "vscode:prepublish": "npm run prepare:bundle && npm run compile",
+    "package": "npx --yes @vscode/vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

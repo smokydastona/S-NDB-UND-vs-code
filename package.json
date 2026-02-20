@@ -5,8 +5,6 @@
   "description": "Workspace wrapper for the SÖNDBÖUND VS Code extension (see vscode-extension/).",
   "scripts": {
     "compile:extension": "npm --prefix vscode-extension run compile",
-    "package:extension": "npm --prefix vscode-extension run package",
-    "test:extension": "npm --prefix vscode-extension run test",
-    "lint:extension": "npm --prefix vscode-extension run lint"
+    "package:extension": "npm --prefix vscode-extension run package"
   }
 }
