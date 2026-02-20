@@ -148,6 +148,94 @@ function looksLikeMissingPythonDeps(detail: string): boolean {
   return /ModuleNotFoundError\b|No module named\b|ImportError\b/i.test(s);
 }
 
+function looksLikeMissingRfxgenExe(detail: string): boolean {
+  const s = String(detail || '');
+  return /rfxgen executable not found\b|rfxgen not found at:\s*|FileNotFoundError:.*rfxgen/i.test(s);
+}
+
+function rfxgenExePath(storageDir: string): string {
+  return path.join(storageDir, 'tools', 'rfxgen', process.platform === 'win32' ? 'rfxgen.exe' : 'rfxgen');
+}
+
+async function runPowerShellOnce(script: string, cwd: string): Promise<{ stdout: string; stderr: string; code: number }>
+{
+  return await new Promise((resolve, reject) => {
+    const child = cp.spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+      cwd,
+      windowsHide: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (d) => { stdout += String(d); });
+    child.stderr.on('data', (d) => { stderr += String(d); });
+
+    child.on('error', reject);
+    child.on('exit', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+  });
+}
+
+async function installRfxgenIntoStorage(storageDir: string, output: vscode.OutputChannel): Promise<{ ok: boolean; exePath?: string; error?: string }>
+{
+  if (process.platform !== 'win32') {
+    return { ok: false, error: 'rfxgen auto-install is currently supported on Windows only.' };
+  }
+
+  const exePath = rfxgenExePath(storageDir);
+  if (fs.existsSync(exePath)) {
+    return { ok: true, exePath };
+  }
+
+  const installDir = path.dirname(exePath);
+  fs.mkdirSync(installDir, { recursive: true });
+
+  // Mirror scripts/get_rfxgen.ps1 but keep it self-contained for the VSIX.
+  // Downloads the latest rfxgen release ZIP and extracts rfxgen.exe.
+  const ps = [
+    '$ErrorActionPreference = "Stop"',
+    '$headers = @{ "Accept" = "application/vnd.github+json"; "User-Agent" = "sondbound-vscode" }',
+    '$release = Invoke-RestMethod -Uri "https://api.github.com/repos/raysan5/rfxgen/releases/latest" -Headers $headers -Method Get',
+    'if (-not $release.assets -or $release.assets.Count -eq 0) { throw "No release assets found for rfxgen." }',
+    '$assetRegex = "win.*(x64|64)|windows|win64|win_64|win-x64"',
+    '$assets = @($release.assets)',
+    '$zipAssets = $assets | Where-Object { $_.name -match "\\.zip$" }',
+    '$candidates = if ($zipAssets.Count -gt 0) { $zipAssets } else { $assets }',
+    '$picked = $candidates | Where-Object { $_.name -match $assetRegex } | Select-Object -First 1',
+    'if (-not $picked) { $names = ($candidates | Select-Object -ExpandProperty name) -join ", "; throw "Could not find a Windows asset. Available: $names" }',
+    '$cacheDir = Join-Path $env:TEMP "rfxgen_downloads"',
+    'New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null',
+    '$zipPath = Join-Path $cacheDir $picked.name',
+    'if (-not (Test-Path $zipPath)) { Write-Host "[rfxgen] downloading $($picked.browser_download_url)"; Invoke-WebRequest -Uri $picked.browser_download_url -OutFile $zipPath -UseBasicParsing }',
+    `$installDir = "${installDir.replace(/"/g, '""')}"`,
+    'New-Item -ItemType Directory -Path $installDir -Force | Out-Null',
+    '$extractDir = Join-Path $env:TEMP ("rfxgen_extract_" + [Guid]::NewGuid().ToString("N"))',
+    'New-Item -ItemType Directory -Path $extractDir -Force | Out-Null',
+    'try {',
+    '  Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force',
+    '  $exe = Get-ChildItem -Path $extractDir -Recurse -Filter "rfxgen.exe" | Select-Object -First 1',
+    '  if (-not $exe) { throw "Could not find rfxgen.exe inside the downloaded archive." }',
+    '  Copy-Item -Path $exe.FullName -Destination (Join-Path $installDir "rfxgen.exe") -Force',
+    '} finally {',
+    '  Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue',
+    '}',
+  ].join('; ');
+
+  const res = await runPowerShellOnce(ps, storageDir);
+  if (res.stdout.trim()) output.appendLine(res.stdout.trimEnd());
+  if (res.stderr.trim()) output.appendLine(res.stderr.trimEnd());
+  if (res.code !== 0) {
+    return { ok: false, error: `rfxgen install failed (exit ${res.code}).` };
+  }
+
+  if (!fs.existsSync(exePath)) {
+    return { ok: false, error: 'rfxgen install completed but rfxgen.exe was not found at the expected path.' };
+  }
+
+  return { ok: true, exePath };
+}
+
 async function showFriendlyBackendFailure(
   kind: 'generate' | 'export' | 'webui',
   e: any,
@@ -180,6 +268,26 @@ async function showFriendlyBackendFailure(
     );
     if (choice === 'Run Setup') {
       await vscode.commands.executeCommand('sondbound.setupBackend');
+    } else if (choice === 'Docs') {
+      await openDocs();
+    } else if (choice === 'Show Output') {
+      output.show(true);
+    }
+    return;
+  }
+
+  if (looksLikeMissingRfxgenExe(detail)) {
+    const choice = await vscode.window.showErrorMessage(
+      'SÖNDBÖUND: rfxgen.exe not found (required for the rfxgen engine).',
+      'Install rfxgen',
+      'Change Default Engine',
+      'Docs',
+      'Show Output'
+    );
+    if (choice === 'Install rfxgen') {
+      await vscode.commands.executeCommand('sondbound.installRfxgen');
+    } else if (choice === 'Change Default Engine') {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'sondbound.defaultEngine');
     } else if (choice === 'Docs') {
       await openDocs();
     } else if (choice === 'Show Output') {
@@ -1486,6 +1594,39 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('sondbound.installRfxgen', async () => {
+      const storageDir = context.globalStorageUri.fsPath;
+      fs.mkdirSync(storageDir, { recursive: true });
+
+      output.show(true);
+      try {
+        const result = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'SÖNDBÖUND: Installing rfxgen…',
+            cancellable: false,
+          },
+          async () => await installRfxgenIntoStorage(storageDir, output)
+        );
+
+        if (!result.ok) {
+          const msg = result.error || 'Install failed.';
+          vscode.window.showErrorMessage(`SÖNDBÖUND: ${msg}`);
+          return { ok: false, error: msg };
+        }
+
+        vscode.window.showInformationMessage(`SÖNDBÖUND: rfxgen installed at ${result.exePath}`);
+        return { ok: true, exePath: result.exePath };
+      } catch (e: any) {
+        const msg = String(e?.message || e);
+        output.appendLine(msg);
+        vscode.window.showErrorMessage('SÖNDBÖUND: rfxgen install failed. (See Output for details)');
+        return { ok: false, error: msg };
+      }
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.openEditor', async () => {
       await openEditorPanel(context);
       return { ok: true };
@@ -1541,6 +1682,29 @@ export function activate(context: vscode.ExtensionContext) {
           );
           if (!engine) return { ok: false, error: 'Engine is required' };
           engineLabel = engine.label;
+        }
+      }
+
+      if (engineLabel === 'rfxgen') {
+        const exe = rfxgenExePath(storageDir);
+        if (!fs.existsSync(exe)) {
+          if (isHeadless) {
+            return { ok: false, error: 'rfxgen.exe not found. Run the command "SÖNDBÖUND: Install rfxgen" or choose a different engine.' };
+          }
+
+          const choice = await vscode.window.showWarningMessage(
+            'rfxgen.exe is not installed. Install it now?',
+            'Install rfxgen',
+            'Cancel'
+          );
+          if (choice === 'Install rfxgen') {
+            const res: any = await vscode.commands.executeCommand('sondbound.installRfxgen');
+            if (!res?.ok) {
+              return { ok: false, error: String(res?.error || 'rfxgen install failed') };
+            }
+          } else {
+            return { ok: false, error: 'rfxgen is not installed' };
+          }
         }
       }
 

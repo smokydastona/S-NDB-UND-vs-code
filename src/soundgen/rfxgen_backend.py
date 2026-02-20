@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -71,6 +72,12 @@ def _infer_preset_from_prompt(prompt: str) -> str:
 
 
 def _resolve_rfxgen_exe(explicit: Optional[Path]) -> str:
+    env_override = os.environ.get("SONDBOUND_RFXGEN_EXE") or os.environ.get("SOUNDGEN_RFXGEN_EXE")
+    if env_override:
+        p = Path(env_override)
+        if p.exists():
+            return str(p)
+
     if explicit is not None:
         if not explicit.exists():
             raise FileNotFoundError(f"rfxgen not found at: {explicit}")
@@ -85,6 +92,13 @@ def _resolve_rfxgen_exe(explicit: Optional[Path]) -> str:
     local = Path("tools") / "rfxgen" / "rfxgen.exe"
     if local.exists():
         return str(local)
+
+    # VS Code extension convention: install under SOUNDGEN_DATA_DIR
+    data_dir = os.environ.get("SOUNDGEN_DATA_DIR")
+    if data_dir:
+        p = Path(data_dir) / "tools" / "rfxgen" / "rfxgen.exe"
+        if p.exists():
+            return str(p)
 
     raise FileNotFoundError(
         "rfxgen executable not found. Put rfxgen.exe in PATH, or at tools/rfxgen/rfxgen.exe, or pass --rfxgen-path."

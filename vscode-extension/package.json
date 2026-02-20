@@ -29,7 +29,8 @@
     "onCommand:sondbound.generate",
     "onCommand:sondbound.generateSound",
     "onCommand:sondbound.exportPack",
-    "onCommand:sondbound.setupBackend"
+    "onCommand:sondbound.setupBackend",
+    "onCommand:sondbound.installRfxgen"
   ],
   "main": "./out/extension.js",
   "files": [
@@ -72,6 +73,10 @@
       {
         "command": "sondbound.setupBackend",
         "title": "SÖNDBÖUND: Setup Backend (Create .venv + pip install)"
+      },
+      {
+        "command": "sondbound.installRfxgen",
+        "title": "SÖNDBÖUND: Install rfxgen (Windows)"
       }
     ],
     "configuration": {

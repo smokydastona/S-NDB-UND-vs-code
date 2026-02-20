@@ -190,8 +190,63 @@ def _rows_from_variants(variants: list[dict[str, Any]]) -> list[list[object]]:
     return rows
 
 
-def _variants_from_df(rows: list[list[object]] | None, prev: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not rows:
+def _variants_from_df(rows: Any, prev: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # Gradio's Dataframe component may yield:
+    # - list[list[...]] (older)
+    # - list[dict] (some configs)
+    # - pandas.DataFrame (Gradio 5/6 common)
+    if rows is None:
+        return prev
+
+    # pandas.DataFrame (duck-typed to avoid hard dependency at import time)
+    if hasattr(rows, "to_dict") and hasattr(rows, "empty"):
+        try:
+            if bool(getattr(rows, "empty")):
+                return prev
+        except Exception:
+            # If anything goes sideways, fall back to previous state.
+            return prev
+
+        try:
+            records = rows.to_dict(orient="records")  # type: ignore[call-arg]
+        except TypeError:
+            records = rows.to_dict("records")  # type: ignore[call-arg]
+
+        normalized_rows: list[list[object]] = []
+        for rec in (records or []):
+            if not isinstance(rec, dict):
+                continue
+            normalized_rows.append(
+                [
+                    rec.get("select", rec.get(0)),
+                    rec.get("id", rec.get(1)),
+                    rec.get("seconds", rec.get(2)),
+                    rec.get("rms_dbfs", rec.get(3)),
+                    rec.get("seed", rec.get(4)),
+                    rec.get("locked", rec.get(5)),
+                ]
+            )
+        rows = normalized_rows
+
+    # list-of-dicts
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+        normalized_rows = []
+        for rec in rows:
+            if not isinstance(rec, dict):
+                continue
+            normalized_rows.append(
+                [
+                    rec.get("select", rec.get(0)),
+                    rec.get("id", rec.get(1)),
+                    rec.get("seconds", rec.get(2)),
+                    rec.get("rms_dbfs", rec.get(3)),
+                    rec.get("seed", rec.get(4)),
+                    rec.get("locked", rec.get(5)),
+                ]
+            )
+        rows = normalized_rows
+
+    if not isinstance(rows, list) or len(rows) == 0:
         return prev
     prev_norm = normalize_variants_state(prev)
     by_id = {str(v.get("id")): v for v in prev_norm if isinstance(v, dict) and v.get("id") is not None}
@@ -1402,7 +1457,8 @@ def build_demo_control_panel() -> gr.Blocks:
                         info="Choose how audio is generated (AI vs procedural).",
                     )
                     prompt = gr.Textbox(label="Prompt", placeholder="e.g. coin pickup")
-                    seconds = gr.Slider(0.5, 10.0, value=3.0, step=0.5, label="Seconds")
+                    # Many SFX are shorter than 0.5s; allow sub-half-second values.
+                    seconds = gr.Slider(0.1, 10.0, value=3.0, step=0.1, label="Seconds")
                     with gr.Row():
                         generate_btn = gr.Button("Generate", elem_id="sndb_gen_btn")
                         regen_btn = gr.Button("Regenerate unlocked")
