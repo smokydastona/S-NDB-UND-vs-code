@@ -114,6 +114,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build_windows_app.ps1 -Clean -P
 powershell -ExecutionPolicy Bypass -File scripts/build_exe.ps1 -Clean
 ```
 
+Notes:
+- The backend build targets Python 3.12 by default (some Windows wheels — especially `pythonnet` used by `pywebview` — can lag very new Python releases).
+- Desktop wrapper diagnostics are written to `%LOCALAPPDATA%\SÖNDBÖUND\desktop.log`.
+
 2) Build Electron (from `electron/`):
 
 ```powershell

@@ -267,7 +267,9 @@ python -m soundgen.doctor --check-stable-audio
 - **rfxgen engine fails**: download `rfxgen.exe` with [scripts/get_rfxgen.ps1](scripts/get_rfxgen.ps1) or pass `--rfxgen-path tools/rfxgen/rfxgen.exe`.
 - **CUDA issues / torch mismatch**: start with `--device cpu`. If you want GPU, install a torch build that matches your CUDA drivers.
 - **Python install problems**: if dependency installs fail on very new Python versions, try Python 3.12 (the GitHub Actions EXE build uses 3.12).
-- **Windows EXE desktop window fails/crashes**: the embedded Desktop UI uses `pywebview` (and on Windows may depend on pythonnet/.NET + WebView2). If it can’t start, double-clicking the EXE will fall back to the browser UI; you can also run `SÖNDBÖUND.exe web`. Check `%LOCALAPPDATA%\SÖNDBÖUND\startup.log` and `%LOCALAPPDATA%\SÖNDBÖUND\desktop.log`.
+- **Windows EXE desktop window fails/crashes**: the embedded Desktop UI uses `pywebview` (and on Windows may depend on pythonnet/.NET + WebView2). If it can’t start, double-clicking the EXE will fall back to the browser UI; you can also run `SÖNDBÖUND.exe web`.
+	- Check `%LOCALAPPDATA%\SÖNDBÖUND\startup.log` (mode selection + fallback) and `%LOCALAPPDATA%\SÖNDBÖUND\desktop.log`.
+	- `desktop.log` includes a `desktop_diag_begin` block with the packaged versions of `pywebview/pythonnet/clr-loader`, module origins, and the resolved `Python.Runtime.dll` path (with `exists/size/sha256`).
 - **Windows SmartScreen blocks the EXE**: click **More info** → **Run anyway**. If you downloaded a ZIP, right-click it → **Properties** → **Unblock** (then re-extract), or run `Unblock-File .\SÖNDBÖUND-*-windows.zip` in PowerShell before extracting.
 
 ## Windows .exe builds (optional)
@@ -292,6 +294,7 @@ How to get them:
 Notes:
 
 - These builds can be large (torch/diffusers/transformers).
+- The desktop wrapper depends on `pythonnet` on Windows; wheels can lag behind brand-new Python versions. The EXE build targets Python 3.12 for stability.
 
 ## Roadmap
 
