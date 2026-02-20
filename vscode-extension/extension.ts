@@ -684,6 +684,9 @@ async function startWebUiServer(
     throw new Error('web UI port must be a positive number');
   }
 
+  const normalizedHost = host === '0.0.0.0' ? '127.0.0.1' : host;
+  const expectedUrl = `http://${normalizedHost}:${Math.floor(port)}`;
+
   const py = resolvePythonCommand(repoRoot);
   const fullArgs = ['-m', 'soundgen.web'];
 
@@ -753,29 +756,49 @@ async function startWebUiServer(
     maybeCaptureUrl(s);
   });
 
-  const timeoutMs = 30000;
-  const started = await new Promise<string>((resolve, reject) => {
-    const start = Date.now();
-    const timer = setInterval(() => {
-      if (webUiUrl) {
-        clearInterval(timer);
-        return resolve(webUiUrl);
+  const canReach = async (): Promise<boolean> => {
+    return await new Promise<boolean>((resolve) => {
+      try {
+        const req = http.get(expectedUrl, { timeout: 2000 }, (res) => {
+          res.resume();
+          resolve(true);
+        });
+        req.on('timeout', () => {
+          try { req.destroy(); } catch {}
+          resolve(false);
+        });
+        req.on('error', () => resolve(false));
+      } catch {
+        resolve(false);
       }
-      if (!webUiProc) {
-        clearInterval(timer);
-        const hint = (stderr || stdout || '').trim();
-        return reject(new Error(hint || 'Web UI process exited before it printed a URL.'));
-      }
-      if (Date.now() - start > timeoutMs) {
-        clearInterval(timer);
-        try { child.kill(); } catch {}
-        reset();
-        return reject(new Error('Timed out waiting for the web UI to start.'));
-      }
-    }, 200);
-  });
+    });
+  };
 
-  return started;
+  const timeoutMs = 60000;
+  const start = Date.now();
+  while (true) {
+    if (webUiUrl) return webUiUrl;
+
+    // Prefer explicit stdout URL parsing, but fall back to probing the expected URL.
+    if (await canReach()) {
+      webUiUrl = expectedUrl;
+      output.appendLine(`[webui] ready: ${webUiUrl}`);
+      return webUiUrl;
+    }
+
+    if (!webUiProc) {
+      const hint = (stderr || stdout || '').trim();
+      throw new Error(hint || 'Web UI process exited before it became reachable.');
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      try { child.kill(); } catch {}
+      reset();
+      throw new Error('Timed out waiting for the web UI to start.');
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
+  }
 }
 
 function prependEnvPath(existing: string | undefined, toPrepend: string): string {
