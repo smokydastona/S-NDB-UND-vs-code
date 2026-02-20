@@ -1,6 +1,9 @@
 {
   "powershell.scriptAnalysis.enable": true,
   "powershell.scriptAnalysis.settingsPath": "PSScriptAnalyzerSettings.psd1",
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/native/pluginhost/build/compile_commands.json",
-  "cmake.sourceDirectory": "C:/Users/smoky/OneDrive/Desktop/Homemade Mods/sondbound-extention/native/pluginhost"
+  // This repo contains a native CMake subproject, but the primary workflow is the VS Code extension.
+  // Disable CMake Tools auto-configure so missing CMake doesn't spam errors when you're not working on native builds.
+  "cmake.enabled": false,
+  "cmake.configureOnOpen": false,
+  "cmake.configureOnEdit": false
 }
