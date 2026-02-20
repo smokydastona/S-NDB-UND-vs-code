@@ -251,6 +251,7 @@ async function canImportBackendCore(
     'import soundfile',
     'import scipy',
     'import requests',
+    'import gradio',
     'import soundgen',
     'print("OK")'
   ].join('; ');
@@ -288,6 +289,68 @@ async function canImportBackendCore(
       resolve({ ok: false, detail: (stderr || stdout || '').trim() || `Probe failed (exit ${code}).` });
     });
   });
+}
+
+async function runProcess(
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; env?: Record<string, string>; timeoutMs?: number },
+  output: vscode.OutputChannel
+): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 0;
+  await new Promise<void>((resolve, reject) => {
+    const child = cp.spawn(cmd, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      windowsHide: true,
+    });
+
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (d) => output.append(String(d)));
+    child.stderr?.on('data', (d) => output.append(String(d)));
+
+    let timer: NodeJS.Timeout | null = null;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try { child.kill(); } catch {}
+        reject(new Error('Command timed out.'));
+      }, timeoutMs);
+    }
+
+    child.on('error', (e) => {
+      if (timer) clearTimeout(timer);
+      reject(e);
+    });
+    child.on('exit', (code) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) return resolve();
+      reject(new Error(`Command failed (exit ${code}).`));
+    });
+  });
+}
+
+async function ensureBackendInstalledDirect(
+  wsRoot: string,
+  requirementsPath: string,
+  basePython: string,
+  output: vscode.OutputChannel
+): Promise<void> {
+  const venvPython = process.platform === 'win32'
+    ? path.join(wsRoot, '.venv', 'Scripts', 'python.exe')
+    : path.join(wsRoot, '.venv', 'bin', 'python');
+
+  if (!fs.existsSync(venvPython)) {
+    output.appendLine('[setup] Creating .venv…');
+    await runProcess(basePython, ['-m', 'venv', '.venv'], { cwd: wsRoot, timeoutMs: 10 * 60_000 }, output);
+  }
+
+  const pipUpgrade = ['-m', 'pip', 'install', '--upgrade', 'pip'];
+  const pipInstall = ['-m', 'pip', 'install', '-r', requirementsPath];
+
+  output.appendLine('[setup] Installing pip requirements…');
+  await runProcess(venvPython, pipUpgrade, { cwd: wsRoot, timeoutMs: 10 * 60_000 }, output);
+  await runProcess(venvPython, pipInstall, { cwd: wsRoot, timeoutMs: 30 * 60_000 }, output);
 }
 
 async function maybeAutoSetupBackend(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
@@ -607,6 +670,12 @@ async function startWebUiServer(
   options?: OpenWebUiOptions
 ): Promise<string> {
   if (webUiProc && webUiUrl) return webUiUrl;
+  if (webUiProc && !webUiUrl) {
+    // A previous attempt is still running but never produced a URL (likely missing deps / hung).
+    try { webUiProc.kill(); } catch {}
+    webUiProc = null;
+    webUiUrl = null;
+  }
 
   const host = String(options?.host || defaultWebUiHostFromConfig()).trim() || '127.0.0.1';
   const port = options?.port != null ? Number(options.port) : defaultWebUiPortFromConfig();
@@ -699,6 +768,8 @@ async function startWebUiServer(
       }
       if (Date.now() - start > timeoutMs) {
         clearInterval(timer);
+        try { child.kill(); } catch {}
+        reset();
         return reject(new Error('Timed out waiting for the web UI to start.'));
       }
     }, 200);
@@ -1247,6 +1318,32 @@ export function activate(context: vscode.ExtensionContext) {
 
       try {
         output.show(true);
+
+        // Ensure web UI deps (gradio) exist before launching.
+        const probe1 = await canImportBackendCore(repoRoot, storageDir, 10000);
+        if (!probe1.ok) {
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (wsRoot) {
+            const requirementsPath = path.join(context.extensionPath, 'backend', 'requirements.txt');
+            const basePy = resolvePythonCommand(context.extensionPath);
+            await vscode.window.withProgress(
+              {
+                location: vscode.ProgressLocation.Notification,
+                title: 'SÖNDBÖUND: Installing Web UI dependencies…',
+                cancellable: false
+              },
+              async () => {
+                await ensureBackendInstalledDirect(wsRoot, requirementsPath, basePy, output);
+              }
+            );
+
+            const probe2 = await canImportBackendCore(repoRoot, storageDir, 15000);
+            if (!probe2.ok) {
+              throw new Error(probe2.detail || 'Backend dependencies are still missing after install.');
+            }
+          }
+        }
+
         const targetUrl = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -1306,6 +1403,37 @@ export function activate(context: vscode.ExtensionContext) {
       const pythonCmd = resolvePythonCommand(context.extensionPath);
       if (!pythonCmd || pythonCmd === 'python') {
         // Even if it's 'python', it might still exist on PATH. We'll just proceed.
+      }
+
+      const installDirect = Boolean(options?.quiet) || (options?.showTerminal === false);
+      if (installDirect) {
+        output.show(true);
+        try {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'SÖNDBÖUND: Installing backend dependencies…',
+              cancellable: false
+            },
+            async () => {
+              await ensureBackendInstalledDirect(wsRoot, requirementsPath, pythonCmd || 'python', output);
+            }
+          );
+          return { ok: true };
+        } catch (e: any) {
+          const detail = formatBackendError(e);
+          output.appendLine(detail);
+          if (!isHeadless) {
+            const choice = await vscode.window.showErrorMessage(
+              'SÖNDBÖUND: Backend setup failed. (See Output for details)',
+              'Show Output',
+              'Docs'
+            );
+            if (choice === 'Show Output') output.show(true);
+            if (choice === 'Docs') await openDocs();
+          }
+          return { ok: false, error: String(e?.message || e) };
+        }
       }
 
       const term = vscode.window.createTerminal({ name: 'SÖNDBÖUND Setup', cwd: wsRoot });

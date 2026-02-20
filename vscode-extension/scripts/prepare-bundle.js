@@ -27,7 +27,9 @@ function main() {
 
   // Backend bundle (Python)
   copyDir(path.join(repoRoot, 'src', 'soundgen'), path.join(extRoot, 'backend', 'src', 'soundgen'));
-  copyFile(path.join(repoRoot, 'requirements.txt'), path.join(extRoot, 'backend', 'requirements.txt'));
+  const vscodeReq = path.join(repoRoot, 'requirements.vscode.txt');
+  const fallbackReq = path.join(repoRoot, 'requirements.txt');
+  copyFile(fs.existsSync(vscodeReq) ? vscodeReq : fallbackReq, path.join(extRoot, 'backend', 'requirements.txt'));
   copyFile(path.join(repoRoot, 'pyproject.toml'), path.join(extRoot, 'backend', 'pyproject.toml'));
 
   // Configs + example manifest

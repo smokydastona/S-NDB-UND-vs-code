@@ -1,0 +1,13 @@
+# Minimal dependency set for the VS Code extension workflow.
+#
+# Goal: enable core generation/export + embedded Web UI without forcing
+# installation of heavy optional AI stacks (torch/diffusers/etc.) unless
+# the user explicitly opts in.
+
+numpy>=1.24
+soundfile>=0.12
+scipy>=1.11
+requests>=2.32
+matplotlib>=3.8
+python-docx>=1.1
+gradio>=4.0
