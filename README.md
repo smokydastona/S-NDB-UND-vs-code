@@ -1,5 +1,7 @@
 # SÖNDBÖUND (VS Code Extension)
 
+![SÖNDBÖUND banner](https://raw.githubusercontent.com/smokydastona/S-NDB-UND-vs-code/main/.examples/Banner.png)
+
 SÖNDBÖUND is a VS Code extension that embeds the SÖNDBÖUND editor UI in a Webview and exposes **command-palette + Copilot-friendly commands** to generate/export game audio using the bundled Python backend (`soundgen`).
 
 This repository is an **extension fork/version** of SÖNDBÖUND: it contains both the VS Code extension (TypeScript) and the backend (Python, `src/soundgen/`).

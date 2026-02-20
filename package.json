@@ -4,6 +4,11 @@
   "description": "SÖNDBÖUND editor inside VS Code (Webview wrapper around the built-in audio editor).",
   "version": "0.0.1",
   "publisher": "smokydastona",
+  "icon": ".examples/icon.png",
+  "galleryBanner": {
+    "color": "#111111",
+    "theme": "dark"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -27,6 +32,7 @@
   "files": [
     "out/**",
     "electron/editor/**",
+    ".examples/icon.png",
     "src/soundgen/**/*.py",
     "src/soundgen/**/*.md",
     "configs/**",
