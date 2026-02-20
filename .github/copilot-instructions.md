@@ -1,8 +1,20 @@
-# Copilot instructions (sondbound-extention)
+# Copilot instructions (SÖNDBÖUND VS Code extension)
 
 ## Big picture
-- This is a **Python (src-layout)** project for generating **Minecraft-ready SFX** from prompts.
-- Main data flow: **prompt → engine generates mono WAV (float32) → optional post-process → export**
+- This repo is a **VS Code extension version of SÖNDBÖUND**.
+- It contains:
+  - **Extension (TypeScript)**: a VS Code command-driven wrapper that opens the SÖNDBÖUND editor UI in a Webview and can call the Python backend.
+  - **Backend (Python, src-layout)**: the original `soundgen` module used for generation/export.
+
+### Primary goal (extension)
+- Provide a Marketplace-ready VS Code extension that:
+  - Compiles TypeScript → `out/extension.js`
+  - Activates via `activationEvents` on contributed commands
+  - Exposes commands to open editor / generate WAV / export pack
+
+### Secondary goal (backend)
+- Preserve the existing Python sound generation workflow:
+  **prompt → engine generates mono WAV (float32) → optional post-process → export**
   - WAV write: `src/soundgen/io_utils.py`
   - Post-process chain + QA flags: `src/soundgen/postprocess.py`, `src/soundgen/qa.py`
   - Minecraft export (`.ogg` + `sounds.json` + optional `lang/en_us.json`): `src/soundgen/minecraft.py`
@@ -14,6 +26,13 @@
 - Web UI (Gradio): `src/soundgen/web.py`
 - Batch from manifest (CSV/JSON): `src/soundgen/batch.py`
 - Doc inputs (drop docs in `pre_gen_sound/`): `src/soundgen/from_docs.py`
+
+## VS Code extension entry points
+- Manifest: `package.json`
+- Extension source: `extension.ts`
+- Compiled output loaded by VS Code: `out/extension.js`
+- Dev launch config: `.vscode/launch.json`
+- Build task: `.vscode/tasks.json` (`npm run compile`)
 
 ## Engines (how they’re wired)
 - `diffusers` engine: `src/soundgen/audiogen_backend.py`
@@ -32,6 +51,13 @@
 - `.ogg` export requires **ffmpeg**. The code finds it on PATH or WinGet’s install path.
   - Typical install: `winget install Gyan.FFmpeg`
 
+## Extension packaging / publishing (VSCE)
+- Packaging tool: `@vscode/vsce`
+- Output artifact: `.vsix`
+- Before publishing:
+  - Ensure `package.json` has real `publisher`, `main` points to `./out/extension.js`, and commands + activation are correct.
+  - Ensure `npm run compile` succeeds.
+
 ## Repo conventions (important for agents)
 - Keep audio arrays **mono 1D float32 in [-1, 1]** between stages.
 - Prefer adding new functionality as small modules under `src/soundgen/` and then wiring into:
@@ -45,7 +71,8 @@ After implementing any requested change, ALWAYS run a full workspace scan/valida
 
 ### Full workspace scan (do this every time)
 - Check VS Code Problems across the workspace.
-- Run a fast syntax/import validation: `python -m compileall -q src/soundgen`.
+- Run a fast syntax/import validation (backend): `python -m compileall -q src/soundgen`.
+- Rebuild the extension (frontend): `npm run compile`.
 - If you touched CLI flags or behavior, ensure `README.md` examples/help text are updated.
 
 ### Fix + validate loop
@@ -104,3 +131,11 @@ After the workspace-wide scan, proactively review the connected modules/configs 
 - CLI generation: `python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --out outputs\\test.wav --post`
 - Minecraft export: `python -m soundgen.generate --engine rfxgen --minecraft --namespace mymod --event ui.coin --prompt "coin pickup" --post`
 - Batch: `python -m soundgen.batch --manifest example_manifest.json --zip outputs\\resourcepack.zip`
+
+## Quick smoke checks (extension)
+- Build: `npm install` (if needed), then `npm run compile`
+- Run: press `F5` (Extension Development Host)
+- Command palette:
+  - `SÖNDBÖUND: Open Editor`
+  - `SÖNDBÖUND: Generate Sound`
+  - `SÖNDBÖUND: Export Pack`

@@ -566,6 +566,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('sondbound.generate', async () => {
+      await vscode.commands.executeCommand('sondbound.generateSound');
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.generateSound', async () => {
       const repoRoot = context.extensionPath;
       const storageDir = context.globalStorageUri.fsPath;
