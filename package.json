@@ -24,15 +24,12 @@
   "main": "./out/extension.js",
   "files": [
     "out/**",
-    "extension.ts",
     "electron/editor/**",
     "src/**",
     "configs/**",
-    "docs/**",
     "example_manifest.json",
     "requirements.txt",
     "pyproject.toml",
-    "sndbund_entry.py",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
