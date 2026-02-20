@@ -42,3 +42,10 @@ jobs:
       - name: Package VSIX
         working-directory: vscode-extension
         run: npx --yes @vscode/vsce package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.os }}
+          path: vscode-extension/*.vsix
+          if-no-files-found: error
