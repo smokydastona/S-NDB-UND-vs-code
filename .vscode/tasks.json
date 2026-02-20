@@ -1,5 +1,20 @@
 {
 	"version": "2.0.0",
+	"problemMatcher": [
+		{
+			"name": "sondbound-python-traceback",
+			"owner": "sondbound",
+			"fileLocation": ["absolute"],
+			"pattern": [
+				{
+					"regexp": "^\\s*File \\\"([^\\\"]+)\\\", line (\\d+), in .+$",
+					"file": 1,
+					"line": 2,
+					"message": 0
+				}
+			]
+		}
+	],
 	"inputs": [
 		{
 			"id": "sondbound.prompt",
@@ -70,7 +85,7 @@
 		{
 			"label": "sondbound: generate wav",
 			"type": "shell",
-			"problemMatcher": [],
+			"problemMatcher": ["$sondbound-python-traceback"],
 			"options": {
 				"env": {
 					"SOUNDGEN_DATA_DIR": "${workspaceFolder}\\.sondbound",
@@ -106,7 +121,7 @@
 		{
 			"label": "sondbound: export pack",
 			"type": "shell",
-			"problemMatcher": [],
+			"problemMatcher": ["$sondbound-python-traceback"],
 			"options": {
 				"env": {
 					"SOUNDGEN_DATA_DIR": "${workspaceFolder}\\.sondbound",

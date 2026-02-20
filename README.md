@@ -181,6 +181,15 @@ Run locally:
 - Press `F5` to launch an **Extension Development Host**
 - Use Command Palette to run the SÖNDBÖUND commands
 
+## Tasks (automation)
+
+This repo includes two first-class VS Code Tasks that mirror real workflows (useful for automation, CI, and Copilot/agent chaining):
+
+- `sondbound: generate wav` → runs `python -m soundgen.app generate` (prompt/seconds/seed/out)
+- `sondbound: export pack` → runs `python -m soundgen.batch` (manifest/zip)
+
+Run them via Command Palette → **Tasks: Run Task**.
+
 ## Packaging
 
 ```powershell

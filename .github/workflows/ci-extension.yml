@@ -1,0 +1,41 @@
+name: CI (Extension)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Compile extension
+        run: npm run compile
+
+      - name: Python syntax check
+        run: python -m compileall -q src/soundgen
+
+      - name: Package VSIX
+        run: npx --yes @vscode/vsce package
