@@ -46,12 +46,14 @@ jobs:
           node -e 'const fs=require("fs"); const p="package.json"; const j=JSON.parse(fs.readFileSync(p,"utf8")); const base=String(j.version||"0.0.0").split("-")[0]; const run=process.env.GITHUB_RUN_NUMBER||"0"; const attempt=process.env.GITHUB_RUN_ATTEMPT||"1"; j.version=base+"-ci."+run+"."+attempt; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n", "utf8"); console.log("CI version:", j.version);'
 
       - name: Package VSIX
+        if: matrix.os == 'windows-latest'
         working-directory: vscode-extension
         run: npx --yes @vscode/vsce package
 
       - name: Upload VSIX artifact
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-${{ matrix.os }}
+          name: sondbound-vsix
           path: vscode-extension/*.vsix
           if-no-files-found: error
