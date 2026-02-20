@@ -39,6 +39,12 @@ Open Command Palette and run one of:
 
 These commands are designed so Copilot can invoke them deterministically.
 
+### Copilot rules of engagement
+
+- Prefer calling commands with an `options` object (headless mode). If `options` is omitted, commands may show interactive prompts for humans.
+- Commands return machine-readable objects like `{ ok: true, ... }` or `{ ok: false, error }`.
+- For logs and backend output, check **Output → SÖNDBÖUND**.
+
 ### `sondbound.openUI`
 
 Opens the embedded editor Webview.
@@ -98,6 +104,27 @@ Return value:
 { ok: true; zipPath: string }
 // or
 { ok: false; error: string }
+
+### `sondbound.openWebUI`
+
+Starts the Python Gradio UI and embeds it inside a VS Code Webview.
+
+Args:
+
+```ts
+{
+  host?: string;
+  port?: number;
+  mode?: "control-panel" | "legacy";
+  embed?: "proxy" | "direct";
+  proxyPort?: number;
+}
+```
+
+Notes:
+
+- Default embedding is `proxy` (recommended): runs a local reverse proxy that strips frame-blocking headers and tunnels WebSockets.
+- Use `embed: "direct"` if you want to iframe the Gradio server URL directly.
 ```
 
 ## Configuration
