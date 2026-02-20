@@ -232,6 +232,64 @@ function quoteForShell(cmd: string): string {
   return s.includes(' ') ? `"${s}"` : s;
 }
 
+async function canImportBackendCore(
+  repoRoot: string,
+  storageDir: string,
+  timeoutMs: number,
+): Promise<{ ok: boolean; detail?: string; error?: any }>
+{
+  const py = resolvePythonCommand(repoRoot);
+  const env = { ...process.env } as Record<string, string>;
+  env.SOUNDGEN_DATA_DIR = storageDir;
+  env.GRADIO_ANALYTICS_ENABLED = 'False';
+  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
+
+  // Keep this probe lightweight: avoid importing torch/diffusers here.
+  const probe = [
+    'import sys',
+    'import numpy',
+    'import soundfile',
+    'import scipy',
+    'import requests',
+    'import soundgen',
+    'print("OK")'
+  ].join('; ');
+
+  return await new Promise((resolve) => {
+    const child = cp.spawn(py, ['-c', probe], {
+      cwd: repoRoot,
+      env,
+      windowsHide: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (d) => { stdout += String(d); });
+    child.stderr.on('data', (d) => { stderr += String(d); });
+
+    let timer: NodeJS.Timeout | null = null;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try { child.kill(); } catch {}
+        resolve({ ok: false, detail: 'Timed out while probing backend imports.' });
+      }, timeoutMs);
+    }
+
+    child.on('error', (e) => {
+      if (timer) clearTimeout(timer);
+      resolve({ ok: false, error: e, detail: String((e as any)?.message || e) });
+    });
+
+    child.on('exit', (code) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) return resolve({ ok: true });
+      resolve({ ok: false, detail: (stderr || stdout || '').trim() || `Probe failed (exit ${code}).` });
+    });
+  });
+}
+
 async function maybeAutoSetupBackend(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
   if (!autoSetupBackendFromConfig()) return;
   if (!vscode.workspace.isTrusted) return;
@@ -239,21 +297,26 @@ async function maybeAutoSetupBackend(context: vscode.ExtensionContext, output: v
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!wsRoot) return;
 
-  // If a venv already exists, assume the user has handled setup.
-  const venvDir = path.join(wsRoot, '.venv');
-  if (fs.existsSync(venvDir)) return;
+  const storageDir = context.globalStorageUri.fsPath;
+  try { fs.mkdirSync(storageDir, { recursive: true }); } catch {}
 
-  const key = `sondbound.backendAutoSetupAttempted:${wsRoot}`;
+  const probe = await canImportBackendCore(context.extensionPath, storageDir, 10000);
+  if (probe.ok) return;
+
+  // Avoid running install every activation.
+  const version = String((context.extension.packageJSON as any)?.version || '0');
+  const key = `sondbound.backendAutoSetupAttempted:${wsRoot}:${version}`;
   const attempted = context.globalState.get<boolean>(key, false);
   if (attempted) return;
 
   await context.globalState.update(key, true);
+  output.appendLine('[setup] Auto-setup: backend imports failed; installing requirements…');
+  if (probe.detail) output.appendLine(`[setup] probe detail: ${probe.detail}`);
 
-  output.appendLine('[setup] Auto-setup enabled: creating .venv and installing backend requirements…');
   void vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: 'SÖNDBÖUND: Setting up backend dependencies…',
+      title: 'SÖNDBÖUND: Installing backend dependencies…',
       cancellable: false
     },
     async () => {
@@ -1252,12 +1315,17 @@ export function activate(context: vscode.ExtensionContext) {
 
       const py = quoteForShell(pythonCmd || 'python');
 
+      const venvPython = process.platform === 'win32'
+        ? path.join(wsRoot, '.venv', 'Scripts', 'python.exe')
+        : path.join(wsRoot, '.venv', 'bin', 'python');
+      const hasVenvPython = fs.existsSync(venvPython);
+
       if (process.platform === 'win32') {
-        term.sendText(`${py} -m venv .venv`, true);
+        if (!hasVenvPython) term.sendText(`${py} -m venv .venv`, true);
         term.sendText('.\\.venv\\Scripts\\python -m pip install --upgrade pip', true);
         term.sendText(`.\\.venv\\Scripts\\python -m pip install -r "${requirementsPath}"`, true);
       } else {
-        term.sendText(`${py} -m venv .venv`, true);
+        if (!hasVenvPython) term.sendText(`${py} -m venv .venv`, true);
         term.sendText('./.venv/bin/python -m pip install --upgrade pip', true);
         term.sendText(`./.venv/bin/python -m pip install -r "${requirementsPath}"`, true);
       }
