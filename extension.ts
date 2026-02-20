@@ -18,6 +18,24 @@ type WebviewResponseMessage = {
   error?: string;
 };
 
+type GenerateOptions = {
+  prompt: string;
+  engine?: string;
+  seconds?: number;
+  outputPath?: string;
+  post?: boolean;
+  edit?: boolean;
+};
+
+type ExportPackOptions = {
+  manifestPath: string;
+  zipPath: string;
+};
+
+type OpenUiOptions = {
+  wavPath?: string;
+};
+
 function slugifyFileStem(input: string): string {
   const s = String(input || '').trim().toLowerCase();
   if (!s) return 'sound';
@@ -58,6 +76,9 @@ function parseJsonLineBestEffort(text: string): any | null {
 }
 
 function resolvePythonCommand(repoRoot: string): string {
+  const cfgPython = String(vscode.workspace.getConfiguration('sondbound').get('pythonPath') || '').trim();
+  if (cfgPython) return cfgPython;
+
   const envPython = String(process.env.SOUNDGEN_PYTHON || '').trim();
   if (envPython) return envPython;
 
@@ -66,6 +87,24 @@ function resolvePythonCommand(repoRoot: string): string {
   if (process.platform === 'win32' && fs.existsSync(venvWin)) return venvWin;
   if (process.platform !== 'win32' && fs.existsSync(venvPosix)) return venvPosix;
   return 'python';
+}
+
+function defaultEngineFromConfig(): string {
+  return String(vscode.workspace.getConfiguration('sondbound').get('defaultEngine') || 'rfxgen');
+}
+
+function defaultSecondsFromConfig(): number {
+  const n = Number(vscode.workspace.getConfiguration('sondbound').get('defaultSeconds') ?? 3.0);
+  return Number.isFinite(n) && n > 0 ? n : 3.0;
+}
+
+function defaultPostFromConfig(): boolean {
+  return Boolean(vscode.workspace.getConfiguration('sondbound').get('defaultPost') ?? true);
+}
+
+function defaultOutputSubdirFromConfig(): string {
+  const s = String(vscode.workspace.getConfiguration('sondbound').get('defaultOutputSubdir') || 'outputs').trim();
+  return s || 'outputs';
 }
 
 function prependEnvPath(existing: string | undefined, toPrepend: string): string {
@@ -560,183 +599,277 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(output);
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('sondbound.openUI', async (options?: OpenUiOptions) => {
+      await openEditorPanel(context, options?.wavPath);
+      return { ok: true };
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.openEditor', async () => {
       await openEditorPanel(context);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('sondbound.generate', async () => {
-      await vscode.commands.executeCommand('sondbound.generateSound');
+    vscode.commands.registerCommand('sondbound.generate', async (options?: GenerateOptions) => {
+      return await vscode.commands.executeCommand('sondbound.generateSound', options);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('sondbound.generateSound', async () => {
+    vscode.commands.registerCommand('sondbound.generateSound', async (options?: GenerateOptions) => {
       const repoRoot = context.extensionPath;
       const storageDir = context.globalStorageUri.fsPath;
       fs.mkdirSync(storageDir, { recursive: true });
 
-      const prompt = await vscode.window.showInputBox({
-        title: 'SÖNDBÖUND: Generate Sound',
-        prompt: 'Enter a text prompt (e.g. “coin pickup”)',
-        validateInput: (v) => String(v || '').trim().length ? undefined : 'Prompt is required'
-      });
-      if (!prompt) return;
+      const isHeadless = !!options;
+      const promptFromOptions = String(options?.prompt || '').trim();
 
-      const engine = await vscode.window.showQuickPick(
-        [
-          { label: 'rfxgen', description: 'Fast procedural (needs rfxgen.exe)' },
-          { label: 'diffusers', description: 'AI (needs torch/diffusers models)' },
-          { label: 'stable_audio_open', description: 'AI (needs HF model access)' },
-          { label: 'replicate', description: 'API (needs key/config)' },
-          { label: 'samplelib', description: 'Remix/sample workflow' },
-          { label: 'synth', description: 'DSP synth' },
-          { label: 'layered', description: 'Layered' },
-          { label: 'hybrid', description: 'Hybrid' },
-        ],
-        {
-          title: 'Engine',
-          canPickMany: false
-        }
-      );
-      if (!engine) return;
+      let prompt = promptFromOptions;
+      if (!prompt) {
+        const picked = await vscode.window.showInputBox({
+          title: 'SÖNDBÖUND: Generate Sound',
+          prompt: 'Enter a text prompt (e.g. “coin pickup”)',
+          validateInput: (v) => String(v || '').trim().length ? undefined : 'Prompt is required'
+        });
+        if (!picked) return { ok: false, error: 'Prompt is required' };
+        prompt = picked;
+      }
 
-      const secondsStr = await vscode.window.showInputBox({
-        title: 'Duration (seconds)',
-        prompt: 'Optional. Leave blank for default (3.0).',
-        validateInput: (v) => {
-          const t = String(v || '').trim();
-          if (!t) return undefined;
-          const n = Number(t);
-          if (!Number.isFinite(n) || n <= 0) return 'Enter a positive number';
-          return undefined;
+      let engineLabel = String(options?.engine || '').trim();
+      if (!engineLabel) {
+        if (isHeadless) {
+          engineLabel = defaultEngineFromConfig();
+        } else {
+          const engine = await vscode.window.showQuickPick(
+            [
+              { label: 'rfxgen', description: 'Fast procedural (needs rfxgen.exe)' },
+              { label: 'diffusers', description: 'AI (needs torch/diffusers models)' },
+              { label: 'stable_audio_open', description: 'AI (needs HF model access)' },
+              { label: 'replicate', description: 'API (needs key/config)' },
+              { label: 'samplelib', description: 'Remix/sample workflow' },
+              { label: 'synth', description: 'DSP synth' },
+              { label: 'layered', description: 'Layered' },
+              { label: 'hybrid', description: 'Hybrid' },
+            ],
+            {
+              title: 'Engine',
+              canPickMany: false
+            }
+          );
+          if (!engine) return { ok: false, error: 'Engine is required' };
+          engineLabel = engine.label;
         }
-      });
-      const seconds = secondsStr && String(secondsStr).trim() ? Number(secondsStr) : undefined;
+      }
+
+      let seconds = options?.seconds;
+      if (seconds != null) {
+        const n = Number(seconds);
+        if (!Number.isFinite(n) || n <= 0) {
+          return { ok: false, error: 'seconds must be a positive number' };
+        }
+        seconds = n;
+      } else if (isHeadless) {
+        seconds = defaultSecondsFromConfig();
+      } else {
+        const secondsStr = await vscode.window.showInputBox({
+          title: 'Duration (seconds)',
+          prompt: `Optional. Leave blank for default (${defaultSecondsFromConfig()}).`,
+          validateInput: (v) => {
+            const t = String(v || '').trim();
+            if (!t) return undefined;
+            const n = Number(t);
+            if (!Number.isFinite(n) || n <= 0) return 'Enter a positive number';
+            return undefined;
+          }
+        });
+        seconds = secondsStr && String(secondsStr).trim() ? Number(secondsStr) : undefined;
+      }
 
       const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
       const defaultOutName = `${slugifyFileStem(prompt)}.wav`;
       const defaultOutUri = wsFolder
-        ? vscode.Uri.joinPath(wsFolder, 'outputs', defaultOutName)
-        : undefined;
+        ? vscode.Uri.joinPath(wsFolder, defaultOutputSubdirFromConfig(), defaultOutName)
+        : vscode.Uri.joinPath(context.globalStorageUri, defaultOutName);
 
-      const outUri = await vscode.window.showSaveDialog({
-        title: 'Output WAV path',
-        defaultUri: defaultOutUri,
-        filters: { WAV: ['wav'] }
-      });
-      if (!outUri) return;
+      let outUri: vscode.Uri | undefined;
+      const outputPath = String(options?.outputPath || '').trim();
+      if (outputPath) {
+        outUri = vscode.Uri.file(outputPath);
+      } else if (isHeadless) {
+        outUri = defaultOutUri;
+      } else {
+        const pickedOut = await vscode.window.showSaveDialog({
+          title: 'Output WAV path',
+          defaultUri: defaultOutUri,
+          filters: { WAV: ['wav'] }
+        });
+        if (!pickedOut) return { ok: false, error: 'Output path is required' };
+        outUri = pickedOut;
+      }
 
       await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(outUri.fsPath)));
 
-      output.show(true);
-      output.appendLine(`[generate] engine=${engine.label} seconds=${seconds ?? '(default)'} out=${outUri.fsPath}`);
+      const post = options?.post ?? (isHeadless ? defaultPostFromConfig() : true);
+      const edit = options?.edit ?? false;
+
+      if (!isHeadless) output.show(true);
+      output.appendLine(`[generate] engine=${engineLabel} seconds=${seconds ?? '(default)'} out=${outUri.fsPath}`);
       output.appendLine(`[generate] prompt: ${prompt}`);
 
       try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: 'SÖNDBÖUND: Generating sound…',
-            cancellable: false
-          },
-          async () => {
-            const args: string[] = ['generate', '--engine', engine.label, '--prompt', prompt, '--out', outUri.fsPath, '--post'];
-            if (seconds != null) args.push('--seconds', String(seconds));
+        const run = async () => {
+          const args: string[] = ['generate', '--engine', engineLabel, '--prompt', prompt, '--out', outUri.fsPath];
+          if (post) args.push('--post');
+          if (seconds != null) args.push('--seconds', String(seconds));
 
-            const res = await runBackendOnce(repoRoot, storageDir, args);
-            if (res.stdout) output.appendLine(res.stdout.trimEnd());
-            if (res.stderr) output.appendLine(res.stderr.trimEnd());
-          }
-        );
+          const res = await runBackendOnce(repoRoot, storageDir, args);
+          if (res.stdout) output.appendLine(res.stdout.trimEnd());
+          if (res.stderr) output.appendLine(res.stderr.trimEnd());
+        };
 
-        const choice = await vscode.window.showInformationMessage(
-          'SÖNDBÖUND: Generated WAV.',
-          'Open in Editor',
-          'Reveal in Explorer'
-        );
-        if (choice === 'Open in Editor') {
-          await openEditorPanel(context, outUri.fsPath);
-        } else if (choice === 'Reveal in Explorer') {
-          await vscode.commands.executeCommand('revealFileInOS', outUri);
+        if (isHeadless) {
+          await run();
+        } else {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'SÖNDBÖUND: Generating sound…',
+              cancellable: false
+            },
+            run
+          );
         }
+
+        if (edit) {
+          await openEditorPanel(context, outUri.fsPath);
+        } else if (!isHeadless) {
+          const choice = await vscode.window.showInformationMessage(
+            'SÖNDBÖUND: Generated WAV.',
+            'Open in Editor',
+            'Reveal in Explorer'
+          );
+          if (choice === 'Open in Editor') {
+            await openEditorPanel(context, outUri.fsPath);
+          } else if (choice === 'Reveal in Explorer') {
+            await vscode.commands.executeCommand('revealFileInOS', outUri);
+          }
+        }
+
+        return {
+          ok: true,
+          outputPath: outUri.fsPath,
+          engine: engineLabel,
+          seconds: seconds ?? null,
+          post,
+        };
       } catch (e: any) {
         const detail = formatBackendError(e);
         output.appendLine(detail);
-        const choice = await vscode.window.showErrorMessage(
-          'SÖNDBÖUND: Generate failed. (See Output for details)',
-          'Show Output'
-        );
-        if (choice === 'Show Output') output.show(true);
+        if (!isHeadless) {
+          const choice = await vscode.window.showErrorMessage(
+            'SÖNDBÖUND: Generate failed. (See Output for details)',
+            'Show Output'
+          );
+          if (choice === 'Show Output') output.show(true);
+        }
+        return { ok: false, error: String(e?.message || e) };
       }
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('sondbound.exportPack', async () => {
+    vscode.commands.registerCommand('sondbound.exportPack', async (options?: ExportPackOptions) => {
       const repoRoot = context.extensionPath;
       const storageDir = context.globalStorageUri.fsPath;
       fs.mkdirSync(storageDir, { recursive: true });
 
-      const manifestPick = await vscode.window.showOpenDialog({
-        title: 'Select manifest (.json/.csv)',
-        canSelectMany: false,
-        filters: { Manifest: ['json', 'csv'] }
-      });
-      if (!manifestPick || !manifestPick[0]) return;
-      const manifestPath = manifestPick[0].fsPath;
+      const isHeadless = !!options;
+
+      let manifestPath = String(options?.manifestPath || '').trim();
+      if (!manifestPath) {
+        const manifestPick = await vscode.window.showOpenDialog({
+          title: 'Select manifest (.json/.csv)',
+          canSelectMany: false,
+          filters: { Manifest: ['json', 'csv'] }
+        });
+        if (!manifestPick || !manifestPick[0]) return { ok: false, error: 'Manifest path is required' };
+        manifestPath = manifestPick[0].fsPath;
+      }
 
       const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
       const defaultZipUri = wsFolder
-        ? vscode.Uri.joinPath(wsFolder, 'outputs', 'resourcepack.zip')
-        : undefined;
+        ? vscode.Uri.joinPath(wsFolder, defaultOutputSubdirFromConfig(), 'resourcepack.zip')
+        : vscode.Uri.joinPath(context.globalStorageUri, 'resourcepack.zip');
 
-      const zipUri = await vscode.window.showSaveDialog({
-        title: 'Output ZIP path',
-        defaultUri: defaultZipUri,
-        filters: { ZIP: ['zip'] }
-      });
-      if (!zipUri) return;
+      let zipUri: vscode.Uri | undefined;
+      const zipPath = String(options?.zipPath || '').trim();
+      if (zipPath) {
+        zipUri = vscode.Uri.file(zipPath);
+      } else if (isHeadless) {
+        zipUri = defaultZipUri;
+      } else {
+        const pickedZip = await vscode.window.showSaveDialog({
+          title: 'Output ZIP path',
+          defaultUri: defaultZipUri,
+          filters: { ZIP: ['zip'] }
+        });
+        if (!pickedZip) return { ok: false, error: 'ZIP path is required' };
+        zipUri = pickedZip;
+      }
 
       await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(zipUri.fsPath)));
 
-      output.show(true);
+      if (!isHeadless) output.show(true);
       output.appendLine(`[pack] manifest=${manifestPath}`);
       output.appendLine(`[pack] zip=${zipUri.fsPath}`);
 
       try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: 'SÖNDBÖUND: Exporting pack…',
-            cancellable: false
-          },
-          async () => {
-            const res = await runPythonModuleOnce(repoRoot, storageDir, 'soundgen.batch', [
-              '--manifest', manifestPath,
-              '--zip', zipUri.fsPath
-            ]);
-            if (res.stdout) output.appendLine(res.stdout.trimEnd());
-            if (res.stderr) output.appendLine(res.stderr.trimEnd());
-          }
-        );
+        const run = async () => {
+          const res = await runPythonModuleOnce(repoRoot, storageDir, 'soundgen.batch', [
+            '--manifest', manifestPath,
+            '--zip', zipUri.fsPath
+          ]);
+          if (res.stdout) output.appendLine(res.stdout.trimEnd());
+          if (res.stderr) output.appendLine(res.stderr.trimEnd());
+        };
 
-        const choice = await vscode.window.showInformationMessage(
-          'SÖNDBÖUND: Pack export complete.',
-          'Reveal in Explorer'
-        );
-        if (choice === 'Reveal in Explorer') {
-          await vscode.commands.executeCommand('revealFileInOS', zipUri);
+        if (isHeadless) {
+          await run();
+        } else {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'SÖNDBÖUND: Exporting pack…',
+              cancellable: false
+            },
+            run
+          );
         }
+
+        if (!isHeadless) {
+          const choice = await vscode.window.showInformationMessage(
+            'SÖNDBÖUND: Pack export complete.',
+            'Reveal in Explorer'
+          );
+          if (choice === 'Reveal in Explorer') {
+            await vscode.commands.executeCommand('revealFileInOS', zipUri);
+          }
+        }
+
+        return { ok: true, zipPath: zipUri.fsPath };
       } catch (e: any) {
         const detail = formatBackendError(e);
         output.appendLine(detail);
-        const choice = await vscode.window.showErrorMessage(
-          'SÖNDBÖUND: Pack export failed. (See Output for details)',
-          'Show Output'
-        );
-        if (choice === 'Show Output') output.show(true);
+        if (!isHeadless) {
+          const choice = await vscode.window.showErrorMessage(
+            'SÖNDBÖUND: Pack export failed. (See Output for details)',
+            'Show Output'
+          );
+          if (choice === 'Show Output') output.show(true);
+        }
+        return { ok: false, error: String(e?.message || e) };
       }
     })
   );

@@ -16,6 +16,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onCommand:sondbound.openUI",
     "onCommand:sondbound.openEditor",
     "onCommand:sondbound.generate",
     "onCommand:sondbound.generateSound",
@@ -38,6 +39,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "sondbound.openUI",
+        "title": "SÖNDBÖUND: Open UI"
+      },
+      {
         "command": "sondbound.openEditor",
         "title": "SÖNDBÖUND: Open Editor"
       },
@@ -53,7 +58,37 @@
         "command": "sondbound.exportPack",
         "title": "SÖNDBÖUND: Export Pack (Manifest → ZIP)"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "SÖNDBÖUND",
+      "properties": {
+        "sondbound.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override for Python executable used by the backend. If empty, uses SOUNDGEN_PYTHON env var, then .venv, then 'python' on PATH."
+        },
+        "sondbound.defaultEngine": {
+          "type": "string",
+          "default": "rfxgen",
+          "description": "Default generation engine (used when commands are called without an explicit engine)."
+        },
+        "sondbound.defaultSeconds": {
+          "type": "number",
+          "default": 3.0,
+          "description": "Default sound duration in seconds (used when seconds are not provided)."
+        },
+        "sondbound.defaultPost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to apply post-processing by default."
+        },
+        "sondbound.defaultOutputSubdir": {
+          "type": "string",
+          "default": "outputs",
+          "description": "Default subfolder (relative to workspace root) for generated WAV output when no explicit outputPath is provided."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p .",

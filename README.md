@@ -156,6 +156,36 @@ Run:
 - Press **F5** (launches an Extension Development Host)
 - In the new VS Code window, run **Command Palette →** `SÖNDBÖUND: Open Editor`
 
+## Copilot usage (extension commands)
+
+This extension exposes capabilities as **commands** so Copilot (and other tools) can invoke them deterministically.
+
+Commands:
+
+- `sondbound.openUI` — opens the embedded SÖNDBÖUND UI (Webview)
+- `sondbound.generate` — Copilot-friendly alias for generation
+- `sondbound.generateSound` — generate a WAV via the Python backend
+- `sondbound.exportPack` — export a pack ZIP from a manifest
+
+Structured arguments (JSON-like):
+
+- `sondbound.generate` / `sondbound.generateSound` accepts:
+	- `prompt` (string, required)
+	- `engine` (string, optional)
+	- `seconds` (number, optional)
+	- `outputPath` (string, optional; defaults to `outputs/<slug>.wav`)
+	- `post` (boolean, optional)
+	- `edit` (boolean, optional; if true, opens the output in the editor)
+
+- `sondbound.exportPack` accepts:
+	- `manifestPath` (string, required)
+	- `zipPath` (string, optional; defaults to `outputs/resourcepack.zip`)
+
+Behavior:
+
+- If you pass arguments, commands run **headless** (no dialogs).
+- If you omit arguments, the extension falls back to interactive dialogs for humans.
+
 
 ## Screenshots / GIFs
 
