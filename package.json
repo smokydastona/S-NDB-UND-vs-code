@@ -17,6 +17,7 @@
   ],
   "activationEvents": [
     "onCommand:sondbound.openUI",
+    "onCommand:sondbound.openWebUI",
     "onCommand:sondbound.openEditor",
     "onCommand:sondbound.generate",
     "onCommand:sondbound.generateSound",
@@ -41,6 +42,10 @@
       {
         "command": "sondbound.openUI",
         "title": "SÖNDBÖUND: Open UI"
+      },
+      {
+        "command": "sondbound.openWebUI",
+        "title": "SÖNDBÖUND: Open Web UI (Control Panel)"
       },
       {
         "command": "sondbound.openEditor",
@@ -86,6 +91,22 @@
           "type": "string",
           "default": "outputs",
           "description": "Default subfolder (relative to workspace root) for generated WAV output when no explicit outputPath is provided."
+        },
+        "sondbound.webUiHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host/interface to bind the local web UI to. Use 127.0.0.1 for local-only."
+        },
+        "sondbound.webUiPort": {
+          "type": "number",
+          "default": 7860,
+          "description": "Port for the local web UI (Gradio)."
+        },
+        "sondbound.webUiMode": {
+          "type": "string",
+          "enum": ["control-panel", "legacy"],
+          "default": "control-panel",
+          "description": "Which web UI to launch. 'control-panel' is the modern UI; 'legacy' is the older accordion-style UI."
         }
       }
     }

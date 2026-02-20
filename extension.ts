@@ -36,6 +36,16 @@ type OpenUiOptions = {
   wavPath?: string;
 };
 
+type OpenWebUiOptions = {
+  host?: string;
+  port?: number;
+  mode?: 'control-panel' | 'legacy';
+};
+
+let webUiProc: cp.ChildProcessWithoutNullStreams | null = null;
+let webUiUrl: string | null = null;
+let webUiPanel: vscode.WebviewPanel | null = null;
+
 function slugifyFileStem(input: string): string {
   const s = String(input || '').trim().toLowerCase();
   if (!s) return 'sound';
@@ -105,6 +115,168 @@ function defaultPostFromConfig(): boolean {
 function defaultOutputSubdirFromConfig(): string {
   const s = String(vscode.workspace.getConfiguration('sondbound').get('defaultOutputSubdir') || 'outputs').trim();
   return s || 'outputs';
+}
+
+function defaultWebUiHostFromConfig(): string {
+  const s = String(vscode.workspace.getConfiguration('sondbound').get('webUiHost') || '127.0.0.1').trim();
+  return s || '127.0.0.1';
+}
+
+function defaultWebUiPortFromConfig(): number {
+  const n = Number(vscode.workspace.getConfiguration('sondbound').get('webUiPort') ?? 7860);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 7860;
+}
+
+function defaultWebUiModeFromConfig(): 'control-panel' | 'legacy' {
+  const s = String(vscode.workspace.getConfiguration('sondbound').get('webUiMode') || 'control-panel').trim().toLowerCase();
+  return s === 'legacy' ? 'legacy' : 'control-panel';
+}
+
+function makeWebUiHtml(webview: vscode.Webview, url: string): string {
+  const csp = [
+    "default-src 'none'",
+    // Allow iframing local Gradio server
+    "frame-src http://127.0.0.1:* http://localhost:*",
+    "child-src http://127.0.0.1:* http://localhost:*",
+    // Minimal styles for layout
+    `style-src ${webview.cspSource} 'unsafe-inline'`,
+  ].join('; ');
+
+  const safeUrl = String(url);
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <title>SÖNDBÖUND Web UI</title>
+  <style>
+    html, body { height: 100%; padding: 0; margin: 0; }
+    .wrap { height: 100%; display: flex; flex-direction: column; }
+    .bar { padding: 6px 10px; font-size: 12px; border-bottom: 1px solid rgba(127,127,127,0.25); }
+    .bar a { color: inherit; }
+    iframe { flex: 1; width: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">Local URL: <a href="${safeUrl}">${safeUrl}</a></div>
+    <iframe
+      src="${safeUrl}"
+      sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-popups"
+      allow="clipboard-read; clipboard-write"
+    ></iframe>
+  </div>
+</body>
+</html>`;
+}
+
+async function startWebUiServer(
+  repoRoot: string,
+  storageDir: string,
+  output: vscode.OutputChannel,
+  options?: OpenWebUiOptions
+): Promise<string> {
+  if (webUiProc && webUiUrl) return webUiUrl;
+
+  const host = String(options?.host || defaultWebUiHostFromConfig()).trim() || '127.0.0.1';
+  const port = options?.port != null ? Number(options.port) : defaultWebUiPortFromConfig();
+  const mode = options?.mode || defaultWebUiModeFromConfig();
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error('web UI port must be a positive number');
+  }
+
+  const py = resolvePythonCommand(repoRoot);
+  const fullArgs = ['-m', 'soundgen.web'];
+
+  const env = { ...process.env } as Record<string, string>;
+  env.SOUNDGEN_DATA_DIR = storageDir;
+  env.GRADIO_ANALYTICS_ENABLED = 'False';
+  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'src'));
+
+  // Gradio respects these environment variables.
+  env.GRADIO_SERVER_NAME = host;
+  env.GRADIO_SERVER_PORT = String(Math.floor(port));
+  if (mode === 'legacy') env.SOUNDGEN_WEB_UI = 'legacy';
+
+  output.appendLine(`[webui] starting: ${py} ${fullArgs.join(' ')}`);
+  output.appendLine(`[webui] host=${host} port=${Math.floor(port)} mode=${mode}`);
+
+  const child = cp.spawn(py, fullArgs, {
+    cwd: repoRoot,
+    env,
+    windowsHide: true,
+  });
+
+  webUiProc = child;
+  webUiUrl = null;
+
+  const reset = () => {
+    if (webUiProc === child) {
+      webUiProc = null;
+      webUiUrl = null;
+    }
+  };
+
+  child.on('exit', (code) => {
+    output.appendLine(`[webui] exited with code ${code}`);
+    reset();
+  });
+  child.on('error', (e) => {
+    output.appendLine(`[webui] spawn error: ${String((e as any)?.message || e)}`);
+    reset();
+  });
+
+  const urlRegex = /(https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0)(?::\d+)?\/?)/i;
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+
+  const maybeCaptureUrl = (chunk: string) => {
+    const m = urlRegex.exec(chunk);
+    if (!m) return;
+    const raw = m[1];
+    // Normalize 0.0.0.0 to a real local host the Webview can reach.
+    const normalized = raw.replace('0.0.0.0', host === '0.0.0.0' ? '127.0.0.1' : host);
+    webUiUrl = normalized;
+  };
+
+  child.stdout.on('data', (d) => {
+    const s = String(d);
+    stdout += s;
+    output.append(s);
+    maybeCaptureUrl(s);
+  });
+  child.stderr.on('data', (d) => {
+    const s = String(d);
+    stderr += s;
+    output.append(s);
+    maybeCaptureUrl(s);
+  });
+
+  const timeoutMs = 30000;
+  const started = await new Promise<string>((resolve, reject) => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (webUiUrl) {
+        clearInterval(timer);
+        return resolve(webUiUrl);
+      }
+      if (!webUiProc) {
+        clearInterval(timer);
+        const hint = (stderr || stdout || '').trim();
+        return reject(new Error(hint || 'Web UI process exited before it printed a URL.'));
+      }
+      if (Date.now() - start > timeoutMs) {
+        clearInterval(timer);
+        return reject(new Error('Timed out waiting for the web UI to start.'));
+      }
+    }, 200);
+  });
+
+  return started;
 }
 
 function prependEnvPath(existing: string | undefined, toPrepend: string): string {
@@ -598,10 +770,63 @@ export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel('SÖNDBÖUND');
   context.subscriptions.push(output);
 
+  context.subscriptions.push({
+    dispose: () => {
+      try {
+        if (webUiProc) webUiProc.kill();
+      } catch {
+        // ignore
+      }
+      webUiProc = null;
+      webUiUrl = null;
+      webUiPanel = null;
+    }
+  });
+
   context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.openUI', async (options?: OpenUiOptions) => {
       await openEditorPanel(context, options?.wavPath);
       return { ok: true };
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('sondbound.openWebUI', async (options?: OpenWebUiOptions) => {
+      const repoRoot = context.extensionPath;
+      const storageDir = context.globalStorageUri.fsPath;
+      fs.mkdirSync(storageDir, { recursive: true });
+
+      output.show(true);
+      const url = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'SÖNDBÖUND: Starting Web UI…',
+          cancellable: false
+        },
+        async () => await startWebUiServer(repoRoot, storageDir, output, options)
+      );
+
+      if (webUiPanel) {
+        webUiPanel.webview.html = makeWebUiHtml(webUiPanel.webview, url);
+        webUiPanel.reveal(vscode.ViewColumn.One);
+        return { ok: true, url };
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'sondbound.webui',
+        'SÖNDBÖUND Web UI',
+        vscode.ViewColumn.One,
+        {
+          enableScripts: false,
+          retainContextWhenHidden: true,
+        }
+      );
+      webUiPanel = panel;
+      panel.webview.html = makeWebUiHtml(panel.webview, url);
+      panel.onDidDispose(() => {
+        if (webUiPanel === panel) webUiPanel = null;
+      });
+      return { ok: true, url };
     })
   );
 

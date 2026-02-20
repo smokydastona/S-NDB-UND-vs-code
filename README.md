@@ -30,6 +30,7 @@ npx --yes @vscode/vsce package
 Open Command Palette and run one of:
 
 - **SÖNDBÖUND: Open UI**
+- **SÖNDBÖUND: Open Web UI (Control Panel)**
 - **SÖNDBÖUND: Open Editor**
 - **SÖNDBÖUND: Generate Sound**
 - **SÖNDBÖUND: Export Pack**
@@ -108,6 +109,9 @@ Settings (VS Code → Settings → search “SÖNDBÖUND”):
 - `sondbound.defaultSeconds`: used when a headless generate call omits `seconds`.
 - `sondbound.defaultPost`: used when a headless generate call omits `post`.
 - `sondbound.defaultOutputSubdir`: default output folder (relative to workspace root).
+- `sondbound.webUiHost`: bind host for the local web UI (default `127.0.0.1`).
+- `sondbound.webUiPort`: bind port for the local web UI (default `7860`).
+- `sondbound.webUiMode`: `control-panel` (default) or `legacy`.
 
 Environment variable alternative:
 
@@ -116,6 +120,8 @@ Environment variable alternative:
 ## Backend prerequisites (Windows)
 
 The extension shells out to Python to run the `soundgen` backend.
+
+For the Web UI, the backend also needs `gradio` (included via `requirements.txt`).
 
 Minimal setup:
 
