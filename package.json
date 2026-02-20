@@ -1,29 +1,12 @@
 {
-  "name": "sondbound",
-  "displayName": "SÖNDBÖUND",
-  "description": "SÖNDBÖUND editor inside VS Code (Webview wrapper around the built-in audio editor).",
-  "version": "0.0.1",
-  "publisher": "smokydastona",
-  "icon": ".examples/icon.png",
-  "galleryBanner": {
-    "color": "#111111",
-    "theme": "dark"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/smokydastona/S-NDB-UND-vs-code.git"
-  },
-  "engines": {
-    "vscode": "^1.90.0"
-  },
-  "categories": [
-    "name": "sondbound-workspace",
-    "private": true,
-    "description": "SÖNDBÖUND monorepo workspace (backend + VS Code extension under ./vscode-extension).",
-    "version": "0.0.0",
-    "scripts": {
-      "compile:extension": "npm --prefix vscode-extension run compile",
-      "package:extension": "npm --prefix vscode-extension run vscode:prepublish && npx --yes --prefix vscode-extension @vscode/vsce package"
-    }
-    "onCommand:sondbound.generateSound",
+  "name": "sondbound-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Workspace wrapper for the SÖNDBÖUND VS Code extension (see vscode-extension/).",
+  "scripts": {
+    "compile:extension": "npm --prefix vscode-extension run compile",
+    "package:extension": "npm --prefix vscode-extension run package",
+    "test:extension": "npm --prefix vscode-extension run test",
+    "lint:extension": "npm --prefix vscode-extension run lint"
+  }
+}
