@@ -6,11 +6,27 @@
   - **Extension (TypeScript)**: a VS Code command-driven wrapper that opens the SÖNDBÖUND editor UI in a Webview and can call the Python backend.
   - **Backend (Python, src-layout)**: the original `soundgen` module used for generation/export.
 
+## The core idea (extension-first)
+- A VS Code extension is basically:
+  - `package.json` contributions (commands/settings)
+  - `extension.ts` registering commands
+  - optional Webviews (HTML/JS) for the UI panels
+  - optional process/terminal integration to run the backend
+- We do **not** “move the app into VS Code”. We **embed** the UI (Webview) and **shell out** to the backend (Python).
+- This repo also contains a native CMake subproject under `native/`, but the **primary workflow is the VS Code extension**.
+
 ### Primary goal (extension)
 - Provide a Marketplace-ready VS Code extension that:
   - Compiles TypeScript → `out/extension.js`
   - Activates via `activationEvents` on contributed commands
-  - Exposes commands to open editor / generate WAV / export pack
+  - Exposes commands to open UI / generate WAV / export pack
+  - Embeds the “full UI” inside VS Code via Webviews
+
+### Full UI embedding (what “embedded” means)
+- Embedded editor UI (Webview): command `sondbound.openUI` / `sondbound.openEditor`
+- Embedded Python Web UI (Gradio) (Webview): command `sondbound.openWebUI`
+  - By default it uses a local reverse-proxy so the Webview iframe works reliably (strips frame-blocking headers + tunnels WebSockets)
+  - Settings: `sondbound.webUiEmbed`, `sondbound.webUiProxyPort`, `sondbound.webUiHost`, `sondbound.webUiPort`, `sondbound.webUiMode`
 
 ### Secondary goal (backend)
 - Preserve the existing Python sound generation workflow:
@@ -33,6 +49,15 @@
 - Compiled output loaded by VS Code: `out/extension.js`
 - Dev launch config: `.vscode/launch.json`
 - Build task: `.vscode/tasks.json` (`npm run compile`)
+
+## Copilot-friendly command contract (mandatory)
+- Copilot can reliably invoke **commands**, not internal functions.
+- Every capability must be reachable via a command contribution.
+- Commands must accept structured args (JSON-like object) and support headless execution:
+  - If args are passed: **no dialogs**; deterministic behavior.
+  - If args are omitted: interactive prompts are allowed as a human fallback.
+- Commands must return machine-readable results (`{ ok: true, ... }` or `{ ok: false, error }`).
+- Prefer logging to the `SÖNDBÖUND` `OutputChannel` over modal UI.
 
 ## Engines (how they’re wired)
 - `diffusers` engine: `src/soundgen/audiogen_backend.py`
