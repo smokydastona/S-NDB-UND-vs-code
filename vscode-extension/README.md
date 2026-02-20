@@ -1,8 +1,5 @@
 # SÖNDBÖUND (VS Code Extension)
 
-> Repo layout note: the publishable VS Code extension now lives in `vscode-extension/`.
-> The Python backend stays in this repo root under `src/soundgen/`.
-
 ![SÖNDBÖUND banner](https://raw.githubusercontent.com/smokydastona/S-NDB-UND-vs-code/main/.examples/Banner.png)
 
 ## What this does
@@ -35,6 +32,7 @@ code --install-extension smokydastona.sondbound
 1. Build the VSIX:
 
 ```powershell
+cd vscode-extension
 npm install
 npx --yes @vscode/vsce package
 ```
@@ -198,6 +196,7 @@ For `.ogg` export you may need `ffmpeg` on PATH.
 Build the extension:
 
 ```powershell
+cd vscode-extension
 npm install
 npm run compile
 ```

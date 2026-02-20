@@ -511,7 +511,7 @@ async function startWebUiServer(
   const env = { ...process.env } as Record<string, string>;
   env.SOUNDGEN_DATA_DIR = storageDir;
   env.GRADIO_ANALYTICS_ENABLED = 'False';
-  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'src'));
+  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
 
   // Gradio respects these environment variables.
   env.GRADIO_SERVER_NAME = host;
@@ -627,7 +627,7 @@ async function runBackendOnce(
   env.SOUNDGEN_DATA_DIR = storageDir;
   env.GRADIO_ANALYTICS_ENABLED = 'False';
   // Make src-layout importable without requiring editable install.
-  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'src'));
+  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
 
   const timeoutMs = opts.timeoutMs ?? 0;
 
@@ -683,7 +683,7 @@ async function runPythonModuleOnce(
   const env = { ...process.env } as Record<string, string>;
   env.SOUNDGEN_DATA_DIR = storageDir;
   env.GRADIO_ANALYTICS_ENABLED = 'False';
-  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'src'));
+  env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
 
   const timeoutMs = opts.timeoutMs ?? 0;
 
@@ -1186,7 +1186,7 @@ export function activate(context: vscode.ExtensionContext) {
         return { ok: false, error: 'No workspace folder is open' };
       }
 
-      const requirementsPath = path.join(context.extensionPath, 'requirements.txt');
+      const requirementsPath = path.join(context.extensionPath, 'backend', 'requirements.txt');
       const term = vscode.window.createTerminal({ name: 'SÖNDBÖUND Setup', cwd: wsRoot });
       term.show(true);
 

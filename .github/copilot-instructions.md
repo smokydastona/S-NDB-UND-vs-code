@@ -9,7 +9,7 @@
 ## The core idea (extension-first)
 - A VS Code extension is basically:
   - `package.json` contributions (commands/settings)
-  - `extension.ts` registering commands
+  - `vscode-extension/extension.ts` registering commands
   - optional Webviews (HTML/JS) for the UI panels
   - optional process/terminal integration to run the backend
 - We do **not** “move the app into VS Code”. We **embed** the UI (Webview) and **shell out** to the backend (Python).
@@ -17,7 +17,7 @@
 
 ### Primary goal (extension)
 - Provide a Marketplace-ready VS Code extension that:
-  - Compiles TypeScript → `out/extension.js`
+  - Compiles TypeScript → `vscode-extension/out/extension.js`
   - Activates via `activationEvents` on contributed commands
   - Exposes commands to open UI / generate WAV / export pack
   - Embeds the “full UI” inside VS Code via Webviews
@@ -44,11 +44,11 @@
 - Doc inputs (drop docs in `pre_gen_sound/`): `src/soundgen/from_docs.py`
 
 ## VS Code extension entry points
-- Manifest: `package.json`
-- Extension source: `extension.ts`
-- Compiled output loaded by VS Code: `out/extension.js`
+- Manifest: `vscode-extension/package.json`
+- Extension source: `vscode-extension/extension.ts`
+- Compiled output loaded by VS Code: `vscode-extension/out/extension.js`
 - Dev launch config: `.vscode/launch.json`
-- Build task: `.vscode/tasks.json` (`npm run compile`)
+- Build task: `.vscode/tasks.json` (`npm --prefix vscode-extension run compile`)
 
 ## Copilot-friendly command contract (mandatory)
 - Copilot can reliably invoke **commands**, not internal functions.
@@ -80,8 +80,8 @@
 - Packaging tool: `@vscode/vsce`
 - Output artifact: `.vsix`
 - Before publishing:
-  - Ensure `package.json` has real `publisher`, `main` points to `./out/extension.js`, and commands + activation are correct.
-  - Ensure `npm run compile` succeeds.
+  - Ensure `vscode-extension/package.json` has real `publisher`, `main` points to `./out/extension.js`, and commands + activation are correct.
+  - Ensure `npm --prefix vscode-extension run vscode:prepublish` succeeds.
 
 ## Repo conventions (important for agents)
 - Keep audio arrays **mono 1D float32 in [-1, 1]** between stages.
@@ -97,7 +97,7 @@ After implementing any requested change, ALWAYS run a full workspace scan/valida
 ### Full workspace scan (do this every time)
 - Check VS Code Problems across the workspace.
 - Run a fast syntax/import validation (backend): `python -m compileall -q src/soundgen`.
-- Rebuild the extension (frontend): `npm run compile`.
+- Rebuild the extension (frontend): `npm --prefix vscode-extension run compile`.
 - If you touched CLI flags or behavior, ensure `README.md` examples/help text are updated.
 
 ### Fix + validate loop

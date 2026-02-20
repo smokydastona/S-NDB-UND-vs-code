@@ -29,13 +29,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install npm deps
+        working-directory: vscode-extension
         run: npm ci
 
       - name: Compile extension
-        run: npm run compile
+        working-directory: vscode-extension
+        run: npm run vscode:prepublish
 
       - name: Python syntax check
         run: python -m compileall -q src/soundgen
 
       - name: Package VSIX
+        working-directory: vscode-extension
         run: npx --yes @vscode/vsce package
