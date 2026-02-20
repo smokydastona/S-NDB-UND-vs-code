@@ -49,6 +49,8 @@ type OpenWebUiOptions = {
 
 type SetupBackendOptions = {
   workspaceRoot?: string;
+  quiet?: boolean;
+  showTerminal?: boolean;
 };
 
 let webUiProc: cp.ChildProcessWithoutNullStreams | null = null;
@@ -217,6 +219,51 @@ async function maybeShowFirstRunWelcome(context: vscode.ExtensionContext): Promi
   } else if (choice === 'Docs') {
     await openDocs();
   }
+}
+
+function autoSetupBackendFromConfig(): boolean {
+  return Boolean(vscode.workspace.getConfiguration('sondbound').get('autoSetupBackend') ?? true);
+}
+
+function quoteForShell(cmd: string): string {
+  const s = String(cmd || '').trim();
+  if (!s) return s;
+  if (s.includes('"')) return s;
+  return s.includes(' ') ? `"${s}"` : s;
+}
+
+async function maybeAutoSetupBackend(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+  if (!autoSetupBackendFromConfig()) return;
+  if (!vscode.workspace.isTrusted) return;
+
+  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!wsRoot) return;
+
+  // If a venv already exists, assume the user has handled setup.
+  const venvDir = path.join(wsRoot, '.venv');
+  if (fs.existsSync(venvDir)) return;
+
+  const key = `sondbound.backendAutoSetupAttempted:${wsRoot}`;
+  const attempted = context.globalState.get<boolean>(key, false);
+  if (attempted) return;
+
+  await context.globalState.update(key, true);
+
+  output.appendLine('[setup] Auto-setup enabled: creating .venv and installing backend requirements…');
+  void vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'SÖNDBÖUND: Setting up backend dependencies…',
+      cancellable: false
+    },
+    async () => {
+      await vscode.commands.executeCommand('sondbound.setupBackend', {
+        workspaceRoot: wsRoot,
+        quiet: true,
+        showTerminal: false,
+      } satisfies SetupBackendOptions);
+    }
+  );
 }
 
 function setupStatusBar(context: vscode.ExtensionContext): vscode.StatusBarItem {
@@ -1099,6 +1146,9 @@ export function activate(context: vscode.ExtensionContext) {
   setTimeout(() => {
     void maybeShowFirstRunWelcome(context);
   }, 750);
+  setTimeout(() => {
+    void maybeAutoSetupBackend(context, output);
+  }, 1000);
 
   context.subscriptions.push({
     dispose: () => {
@@ -1180,22 +1230,34 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('sondbound.setupBackend', async (options?: SetupBackendOptions) => {
+      const isHeadless = !!options;
       const wsRoot = String(options?.workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '').trim();
       if (!wsRoot) {
-        vscode.window.showErrorMessage('SÖNDBÖUND: Open a folder/workspace first to set up a .venv.');
+        if (!isHeadless) {
+          vscode.window.showErrorMessage('SÖNDBÖUND: Open a folder/workspace first to set up a .venv.');
+        }
         return { ok: false, error: 'No workspace folder is open' };
       }
 
       const requirementsPath = path.join(context.extensionPath, 'backend', 'requirements.txt');
+      const pythonCmd = resolvePythonCommand(context.extensionPath);
+      if (!pythonCmd || pythonCmd === 'python') {
+        // Even if it's 'python', it might still exist on PATH. We'll just proceed.
+      }
+
       const term = vscode.window.createTerminal({ name: 'SÖNDBÖUND Setup', cwd: wsRoot });
-      term.show(true);
+      const showTerminal = options?.showTerminal ?? true;
+      if (showTerminal) term.show(true);
+      else term.show(false);
+
+      const py = quoteForShell(pythonCmd || 'python');
 
       if (process.platform === 'win32') {
-        term.sendText('python -m venv .venv', true);
+        term.sendText(`${py} -m venv .venv`, true);
         term.sendText('.\\.venv\\Scripts\\python -m pip install --upgrade pip', true);
         term.sendText(`.\\.venv\\Scripts\\python -m pip install -r "${requirementsPath}"`, true);
       } else {
-        term.sendText('python3 -m venv .venv || python -m venv .venv', true);
+        term.sendText(`${py} -m venv .venv`, true);
         term.sendText('./.venv/bin/python -m pip install --upgrade pip', true);
         term.sendText(`./.venv/bin/python -m pip install -r "${requirementsPath}"`, true);
       }

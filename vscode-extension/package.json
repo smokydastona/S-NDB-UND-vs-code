@@ -92,6 +92,11 @@
           "default": "https://github.com/smokydastona/S-NDB-UND-vs-code#readme",
           "description": "Documentation URL opened by the extension's Docs buttons."
         },
+        "sondbound.autoSetupBackend": {
+          "type": "boolean",
+          "default": true,
+          "description": "On first activation, if the workspace has no .venv, automatically create .venv and pip install backend requirements."
+        },
         "sondbound.pythonPath": {
           "type": "string",
           "default": "",
