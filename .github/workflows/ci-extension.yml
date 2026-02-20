@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: build (${{ matrix.os }})
@@ -57,3 +60,14 @@ jobs:
           name: sondbound-vsix
           path: vscode-extension/*.vsix
           if-no-files-found: error
+
+      - name: Publish VSIX (GitHub Release asset)
+        if: github.event_name == 'push' && matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-${{ github.run_number }}.${{ github.run_attempt }}
+          name: CI build ci-${{ github.run_number }}.${{ github.run_attempt }}
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          files: |
+            vscode-extension/*.vsix
