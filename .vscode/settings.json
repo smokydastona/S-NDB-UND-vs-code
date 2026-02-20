@@ -1,5 +1,6 @@
 {
   "powershell.scriptAnalysis.enable": true,
   "powershell.scriptAnalysis.settingsPath": "PSScriptAnalyzerSettings.psd1",
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/native/pluginhost/build/compile_commands.json"
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/native/pluginhost/build/compile_commands.json",
+  "cmake.sourceDirectory": "C:/Users/smoky/OneDrive/Desktop/Homemade Mods/sondbound-extention/native/pluginhost"
 }

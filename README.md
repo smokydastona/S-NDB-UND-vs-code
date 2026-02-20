@@ -135,6 +135,28 @@ python -m soundgen.generate --engine rfxgen --prompt "coin pickup" --post --out 
 python -m soundgen.generate --engine rfxgen --minecraft --namespace mymod --event ui.coin --subtitle "Coin" --prompt "coin pickup" --post
 ```
 
+## VS Code extension (dev)
+
+This repo now includes a **VS Code extension wrapper** that opens the built-in editor UI in a Webview.
+
+Prereqs (Windows):
+
+```powershell
+npm install
+npm run compile
+
+# (Editor backend only)
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -U pip
+.\.venv\Scripts\python -m pip install numpy soundfile scipy
+```
+
+Run:
+
+- Press **F5** (launches an Extension Development Host)
+- In the new VS Code window, run **Command Palette →** `SÖNDBÖUND: Open Editor`
+
+
 ## Screenshots / GIFs
 
 This repo intentionally does not commit generated audio or packs. Screenshots/GIFs are welcome.

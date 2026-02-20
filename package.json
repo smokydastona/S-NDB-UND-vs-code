@@ -1,0 +1,45 @@
+{
+  "name": "sondbound-vscode",
+  "displayName": "SÖNDBÖUND",
+  "description": "SÖNDBÖUND editor inside VS Code (Webview wrapper around the built-in audio editor).",
+  "version": "0.0.1",
+  "publisher": "smokydastona",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smokydastona/S-NDB-UND.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sondbound.openEditor",
+        "title": "SÖNDBÖUND: Open Editor"
+      },
+      {
+        "command": "sondbound.generateSound",
+        "title": "SÖNDBÖUND: Generate Sound (Prompt → WAV)"
+      },
+      {
+        "command": "sondbound.exportPack",
+        "title": "SÖNDBÖUND: Export Pack (Manifest → ZIP)"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}

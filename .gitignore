@@ -67,5 +67,10 @@ electron/pnpm-lock.yaml
 electron/dist/
 electron/backend/
 
+# VS Code extension / Node
+node_modules/
+out/
+*.vsix
+
 # Native plugin host build artifacts
 native/pluginhost/build/
