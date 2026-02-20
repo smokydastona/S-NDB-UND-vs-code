@@ -35,8 +35,13 @@ code --install-extension smokydastona.sondbound
 1. Build the VSIX:
 
 ```powershell
-npm install
+# Option A (recommended): run from the extension folder
+cd vscode-extension
+npm ci
 npx --yes @vscode/vsce package
+
+# Option B: from repo root (wrapper script)
+# npm run package:extension
 ```
 
 2. In VS Code: **Extensions → ⋯ → Install from VSIX…** and select `sondbound-0.0.1.vsix`.
