@@ -1,5 +1,59 @@
 {
 	"version": "2.0.0",
+	"inputs": [
+		{
+			"id": "sondbound.prompt",
+			"type": "promptString",
+			"description": "Prompt (required)",
+			"default": "coin pickup"
+		},
+		{
+			"id": "sondbound.engine",
+			"type": "pickString",
+			"description": "Engine",
+			"options": [
+				"rfxgen",
+				"diffusers",
+				"stable_audio_open",
+				"replicate",
+				"samplelib",
+				"synth",
+				"layered",
+				"hybrid"
+			],
+			"default": "rfxgen"
+		},
+		{
+			"id": "sondbound.seconds",
+			"type": "promptString",
+			"description": "Seconds (optional)",
+			"default": "3"
+		},
+		{
+			"id": "sondbound.seed",
+			"type": "promptString",
+			"description": "Seed (optional; blank = random)",
+			"default": ""
+		},
+		{
+			"id": "sondbound.outWav",
+			"type": "promptString",
+			"description": "Output WAV path (relative or absolute)",
+			"default": "outputs\\task.wav"
+		},
+		{
+			"id": "sondbound.manifest",
+			"type": "promptString",
+			"description": "Manifest path (JSON/CSV; relative or absolute)",
+			"default": "example_manifest.json"
+		},
+		{
+			"id": "sondbound.outZip",
+			"type": "promptString",
+			"description": "Output ZIP path (relative or absolute)",
+			"default": "outputs\\resourcepack.zip"
+		}
+	],
 	"tasks": [
 		{
 			"label": "npm: compile (extension)",
@@ -12,6 +66,78 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "sondbound: generate wav",
+			"type": "shell",
+			"problemMatcher": [],
+			"options": {
+				"env": {
+					"SOUNDGEN_DATA_DIR": "${workspaceFolder}\\.sondbound",
+					"GRADIO_ANALYTICS_ENABLED": "False",
+					"PYTHONPATH": "${workspaceFolder}\\src"
+				}
+			},
+			"windows": {
+				"command": "powershell",
+				"args": [
+					"-NoProfile",
+					"-ExecutionPolicy",
+					"Bypass",
+					"-Command",
+					"$py='${config:sondbound.pythonPath}'; if (-not $py) { $py=$env:SOUNDGEN_PYTHON }; if (-not $py) { $py='python' }; $ws='${workspaceFolder}'; $out='${input:sondbound.outWav}'; if (-not [System.IO.Path]::IsPathRooted($out)) { $out = Join-Path $ws $out }; $sec='${input:sondbound.seconds}'; $seed='${input:sondbound.seed}'; $args=@('-m','soundgen.app','generate','--engine','${input:sondbound.engine}','--prompt','${input:sondbound.prompt}','--out',$out,'--post'); if ($sec) { $args += @('--seconds',$sec) }; if ($seed) { $args += @('--seed',$seed) }; & $py @args"
+				]
+			},
+			"linux": {
+				"command": "bash",
+				"args": [
+					"-lc",
+					"py=\"${config:sondbound.pythonPath}\"; if [ -z \"$py\" ]; then py=\"${SOUNDGEN_PYTHON:-python3}\"; fi; out=\"${input:sondbound.outWav}\"; case \"$out\" in /*) ;; *) out=\"${workspaceFolder}/$out\" ;; esac; args=( -m soundgen.app generate --engine \"${input:sondbound.engine}\" --prompt \"${input:sondbound.prompt}\" --out \"$out\" --post ); sec=\"${input:sondbound.seconds}\"; seed=\"${input:sondbound.seed}\"; if [ -n \"$sec\" ]; then args+=( --seconds \"$sec\" ); fi; if [ -n \"$seed\" ]; then args+=( --seed \"$seed\" ); fi; \"$py\" \"${args[@]}\""
+				]
+			},
+			"osx": {
+				"command": "bash",
+				"args": [
+					"-lc",
+					"py=\"${config:sondbound.pythonPath}\"; if [ -z \"$py\" ]; then py=\"${SOUNDGEN_PYTHON:-python3}\"; fi; out=\"${input:sondbound.outWav}\"; case \"$out\" in /*) ;; *) out=\"${workspaceFolder}/$out\" ;; esac; args=( -m soundgen.app generate --engine \"${input:sondbound.engine}\" --prompt \"${input:sondbound.prompt}\" --out \"$out\" --post ); sec=\"${input:sondbound.seconds}\"; seed=\"${input:sondbound.seed}\"; if [ -n \"$sec\" ]; then args+=( --seconds \"$sec\" ); fi; if [ -n \"$seed\" ]; then args+=( --seed \"$seed\" ); fi; \"$py\" \"${args[@]}\""
+				]
+			}
+		},
+		{
+			"label": "sondbound: export pack",
+			"type": "shell",
+			"problemMatcher": [],
+			"options": {
+				"env": {
+					"SOUNDGEN_DATA_DIR": "${workspaceFolder}\\.sondbound",
+					"GRADIO_ANALYTICS_ENABLED": "False",
+					"PYTHONPATH": "${workspaceFolder}\\src"
+				}
+			},
+			"windows": {
+				"command": "powershell",
+				"args": [
+					"-NoProfile",
+					"-ExecutionPolicy",
+					"Bypass",
+					"-Command",
+					"$py='${config:sondbound.pythonPath}'; if (-not $py) { $py=$env:SOUNDGEN_PYTHON }; if (-not $py) { $py='python' }; $ws='${workspaceFolder}'; $manifest='${input:sondbound.manifest}'; if (-not [System.IO.Path]::IsPathRooted($manifest)) { $manifest = Join-Path $ws $manifest }; $zip='${input:sondbound.outZip}'; if (-not [System.IO.Path]::IsPathRooted($zip)) { $zip = Join-Path $ws $zip }; & $py -m soundgen.batch --manifest $manifest --zip $zip"
+				]
+			},
+			"linux": {
+				"command": "bash",
+				"args": [
+					"-lc",
+					"py=\"${config:sondbound.pythonPath}\"; if [ -z \"$py\" ]; then py=\"${SOUNDGEN_PYTHON:-python3}\"; fi; manifest=\"${input:sondbound.manifest}\"; case \"$manifest\" in /*) ;; *) manifest=\"${workspaceFolder}/$manifest\" ;; esac; zip=\"${input:sondbound.outZip}\"; case \"$zip\" in /*) ;; *) zip=\"${workspaceFolder}/$zip\" ;; esac; \"$py\" -m soundgen.batch --manifest \"$manifest\" --zip \"$zip\""
+				]
+			},
+			"osx": {
+				"command": "bash",
+				"args": [
+					"-lc",
+					"py=\"${config:sondbound.pythonPath}\"; if [ -z \"$py\" ]; then py=\"${SOUNDGEN_PYTHON:-python3}\"; fi; manifest=\"${input:sondbound.manifest}\"; case \"$manifest\" in /*) ;; *) manifest=\"${workspaceFolder}/$manifest\" ;; esac; zip=\"${input:sondbound.outZip}\"; case \"$zip\" in /*) ;; *) zip=\"${workspaceFolder}/$zip\" ;; esac; \"$py\" -m soundgen.batch --manifest \"$manifest\" --zip \"$zip\""
+				]
+			}
 		}
 	]
 }

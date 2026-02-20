@@ -24,6 +24,9 @@ outputs/
 library/
 *.jsonl
 
+# Workspace-local app data (used by VS Code tasks)
+.sondbound/
+
 # Examples (local sandbox)
 .examples/
 example_*.json
