@@ -937,6 +937,10 @@ async function runBackendOnce(
 
   const env = { ...process.env } as Record<string, string>;
   env.SOUNDGEN_DATA_DIR = storageDir;
+  {
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (wsRoot) env.SOUNDGEN_WORKSPACE_ROOT = wsRoot;
+  }
   env.GRADIO_ANALYTICS_ENABLED = 'False';
   // Make src-layout importable without requiring editable install.
   env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
@@ -994,6 +998,10 @@ async function runPythonModuleOnce(
 
   const env = { ...process.env } as Record<string, string>;
   env.SOUNDGEN_DATA_DIR = storageDir;
+  {
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (wsRoot) env.SOUNDGEN_WORKSPACE_ROOT = wsRoot;
+  }
   env.GRADIO_ANALYTICS_ENABLED = 'False';
   env.PYTHONPATH = prependEnvPath(env.PYTHONPATH, path.join(repoRoot, 'backend', 'src'));
 

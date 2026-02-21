@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import tempfile
 from pathlib import Path
 import sys
@@ -176,7 +177,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--library-zip",
         action="append",
         default=None,
-        help="Path to a ZIP sound library. Can be specified multiple times. Default: .examples/sound libraies/*.zip",
+        help=(
+            "Path to a ZIP sound library. Can be specified multiple times. "
+            "Default: .examples/sound libraies/*.zip (also searches under SOUNDGEN_WORKSPACE_ROOT if set)."
+        ),
     )
     p.add_argument(
         "--library-pitch-min",
@@ -1063,12 +1067,50 @@ def main(argv: list[str] | None = None) -> int:
                 sound_path=sound_path,
                 credits=data,
             )
+    def _default_samplelib_zips() -> list[Path]:
+        # The VS Code extension runs the backend with cwd = installed extension folder,
+        # but sample libraries often live in the user's workspace under .examples/.
+        workspace_root = os.environ.get("SOUNDGEN_WORKSPACE_ROOT") or os.environ.get("SONDBOUND_WORKSPACE_ROOT")
+
+        base_roots: list[Path] = [Path.cwd()]
+        if workspace_root:
+            try:
+                base_roots.insert(0, Path(str(workspace_root)))
+            except Exception:
+                pass
+
+        rel_dirs = (
+            Path(".examples") / "sound libraies",  # legacy misspelling
+            Path(".examples") / "sound libraries",
+            Path(".examples") / "sound_libraries",
+        )
+
+        found: list[Path] = []
+        seen: set[str] = set()
+        for root in base_roots:
+            for rel in rel_dirs:
+                d = root / rel
+                if not d.exists():
+                    continue
+                for z in sorted(d.glob("*.zip")):
+                    try:
+                        key = str(z.resolve())
+                    except Exception:
+                        key = str(z)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    found.append(z)
+        return found
+
     # samplelib defaults
-    default_zips = sorted(Path(".examples").joinpath("sound libraies").glob("*.zip"))
+    default_zips = _default_samplelib_zips()
     zip_args = args.library_zip if args.library_zip else [str(p) for p in default_zips]
     if args.engine == "samplelib" and not zip_args:
         raise FileNotFoundError(
-            "No --library-zip provided and no default zips found at .examples/sound libraies/*.zip"
+            "No --library-zip provided and no default .zip libraries found. "
+            "Looked under .examples/(sound libraies|sound libraries|sound_libraries)/*.zip "
+            "relative to cwd and SOUNDGEN_WORKSPACE_ROOT (if set)."
         )
 
     index_path = None if str(args.library_index).strip() == "" else Path(str(args.library_index))

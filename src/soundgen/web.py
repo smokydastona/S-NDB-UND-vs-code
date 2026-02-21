@@ -1258,7 +1258,41 @@ def _generate(
     wav_img = None
     spec_img = None
 
-    default_zips = tuple(Path(".examples").joinpath("sound libraies").glob("*.zip"))
+    def _default_samplelib_zips() -> tuple[Path, ...]:
+        workspace_root = os.environ.get("SOUNDGEN_WORKSPACE_ROOT") or os.environ.get("SONDBOUND_WORKSPACE_ROOT")
+
+        base_roots: list[Path] = [Path.cwd()]
+        if workspace_root:
+            try:
+                base_roots.insert(0, Path(str(workspace_root)))
+            except Exception:
+                pass
+
+        rel_dirs = (
+            Path(".examples") / "sound libraies",  # legacy misspelling
+            Path(".examples") / "sound libraries",
+            Path(".examples") / "sound_libraries",
+        )
+
+        found: list[Path] = []
+        seen: set[str] = set()
+        for root in base_roots:
+            for rel in rel_dirs:
+                d = root / rel
+                if not d.exists():
+                    continue
+                for z in sorted(d.glob("*.zip")):
+                    try:
+                        key = str(z.resolve())
+                    except Exception:
+                        key = str(z)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    found.append(z)
+        return tuple(found)
+
+    default_zips = _default_samplelib_zips()
     user_zips = _as_zip_paths(samplelib_zips)
     active_zips = user_zips if user_zips else default_zips
     index_path = None if str(library_index or "").strip() == "" else Path(str(library_index))
